@@ -4,6 +4,28 @@ This is the release history for LessonCue. Each release publishes both user and
 developer notes on GitHub; the app shows only the user changes before an
 administrator installs an update.
 
+## v0.46.42 — Media recovery and presentation conversion hardening
+
+### User changes
+
+- YouTube imports now keep a valid source playable through streaming when an
+  offline download cannot be completed, instead of leaving an unusable failed
+  media item.
+- Large presentation conversions retry LibreOffice with a fresh profile and
+  the explicit Impress PDF exporter, improving recovery from transient office
+  process failures.
+- Google Drive reconnects now reuse the stored offline grant when it is still
+  valid, instead of needlessly creating a new consent grant each time.
+
+### Developer changes
+
+- Existing failed YouTube imports with valid source links are repaired on server
+  startup, and the importer includes a bounded no-JavaScript fallback for Deno
+  memory failures.
+- Conversion diagnostics retain the LibreOffice output from both attempts;
+  image assets remain excluded from adaptive video-transcode queues.
+- Release server/web version 0.46.42 and Android TV/Fire TV version 0.46.16 (version code 156).
+
 ## v0.46.41 — Faster Android TV lesson previews
 
 ### User changes

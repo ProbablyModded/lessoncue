@@ -89,6 +89,18 @@ public sealed class PresentationConversionTests
     public void SupportedDocumentsAreRecognized(string fileName) => Assert.True(PresentationConversion.IsConvertible(fileName));
 
     [Theory]
+    [InlineData(".ppt", true, "pdf:impress_pdf_Export")]
+    [InlineData(".pptx", true, "pdf:impress_pdf_Export")]
+    [InlineData(".odp", true, "pdf:impress_pdf_Export")]
+    [InlineData(".docx", false, "pdf")]
+    [InlineData(".xlsx", false, "pdf")]
+    public void LibreOfficeUsesThePresentationFilterForSlideDecks(string extension, bool presentation, string filter)
+    {
+        Assert.Equal(presentation, PresentationConversion.IsPresentationExtension(extension));
+        Assert.Equal(filter, PresentationConversion.LibreOfficePdfFilter(extension));
+    }
+
+    [Theory]
     [InlineData("https://docs.google.com/presentation/d/1AbCdEfGhIjKlMnOpQrStUvWxYz_123-456/edit",
         "https://docs.google.com/presentation/d/1AbCdEfGhIjKlMnOpQrStUvWxYz_123-456/export/pdf")]
     [InlineData("https://docs.google.com/presentation/d/12345678/preview",

@@ -19,7 +19,7 @@ public sealed class GoogleDriveBackupClient(IHttpClientFactory clients)
     private static readonly Uri DriveUploadEndpoint = new("https://www.googleapis.com/upload/drive/v3/files");
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public string CreateAuthorizationUrl(string clientId, string callbackUri, string state)
+    public string CreateAuthorizationUrl(string clientId, string callbackUri, string state, bool requestConsent)
     {
         var parameters = new Dictionary<string, string>
         {
@@ -28,10 +28,14 @@ public sealed class GoogleDriveBackupClient(IHttpClientFactory clients)
             ["response_type"] = "code",
             ["scope"] = "https://www.googleapis.com/auth/drive.file",
             ["access_type"] = "offline",
-            ["prompt"] = "consent",
             ["include_granted_scopes"] = "true",
             ["state"] = state
         };
+        // Reuse an existing durable refresh grant when reconnecting. Repeated
+        // consent grants can consume Google's per-client refresh-token quota
+        // and invalidate the oldest token. Force consent only for the initial
+        // connection or an explicitly expired/revoked connection.
+        if (requestConsent) parameters["prompt"] = "consent";
         var query = string.Join("&", parameters.Select(pair =>
             $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"));
         return new UriBuilder(AuthorizationEndpoint) { Query = query }.Uri.AbsoluteUri;

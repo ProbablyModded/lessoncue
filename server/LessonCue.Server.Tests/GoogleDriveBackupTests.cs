@@ -98,6 +98,7 @@ public sealed class GoogleDriveBackupTests
             Assert.Equal("accounts.google.com", authorizationUri.Host);
             Assert.Contains("drive.file", authorizationUri.Query, StringComparison.Ordinal);
             Assert.Contains("drive-client.apps.googleusercontent.com", authorizationUri.Query, StringComparison.Ordinal);
+            Assert.Contains("prompt=consent", authorizationUri.Query, StringComparison.Ordinal);
             var state = QueryValue(authorizationUri, "state");
             await policy.CompleteGoogleDriveAuthorizationAsync(state, "one-time-code", ct);
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -106,6 +107,8 @@ public sealed class GoogleDriveBackupTests
             var connected = Assert.Single(policy.GetStatus("UTC").Destinations!);
             Assert.True(connected.GoogleDriveConnected);
             Assert.True(connected.GoogleDriveClientSecretConfigured);
+            var reconnectUri = new Uri(await policy.BeginGoogleDriveAuthorizationAsync(callback, ct));
+            Assert.DoesNotContain("prompt=consent", reconnectUri.Query, StringComparison.Ordinal);
             var policyJson = await File.ReadAllTextAsync(
                 Path.Combine(root, "config", "backup-policy.json"), ct);
             Assert.DoesNotContain(clientSecret, policyJson, StringComparison.Ordinal);

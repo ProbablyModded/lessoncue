@@ -361,6 +361,8 @@ public sealed class BackupPolicyService : BackgroundService
 
             var state = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
                 .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            var requestConsent = string.IsNullOrEmpty(destination.ProtectedGoogleDriveRefreshToken) ||
+                                 destination.GoogleDriveReauthorizationRequired;
             destination = destination with
             {
                 GoogleDriveOAuthStateProtected = protector.Protect(state),
@@ -374,7 +376,8 @@ public sealed class BackupPolicyService : BackgroundService
             return googleDrive.CreateAuthorizationUrl(
                 destination.GoogleDriveOAuthClientId,
                 callback.AbsoluteUri,
-                state);
+                state,
+                requestConsent);
         }
         finally { gate.Release(); }
     }

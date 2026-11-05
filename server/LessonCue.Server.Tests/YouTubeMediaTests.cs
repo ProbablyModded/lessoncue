@@ -26,6 +26,13 @@ public sealed class YouTubeMediaTests
     }
 
     [Fact]
+    public void RecognizesAValidSourceAsAStreamingFallback()
+    {
+        Assert.True(YouTubeMedia.HasStreamingFallback("https://www.youtube.com/watch?v=dQw4w9WgXcQ"));
+        Assert.False(YouTubeMedia.HasStreamingFallback("https://example.test/video.mp4"));
+    }
+
+    [Fact]
     public void DownloadArgumentsConfigureTheBundledDenoRuntime()
     {
         var arguments = YouTubeImportService.BuildDownloadArguments(
@@ -96,6 +103,30 @@ public sealed class YouTubeMediaTests
         Assert.Contains("best[ext=mp4]", arguments);
         Assert.Contains("youtube:player_client=android", arguments);
         Assert.DoesNotContain("--merge-output-format", arguments);
+    }
+
+    [Fact]
+    public void NoJavaScriptFallbackAvoidsTheDenoRuntime()
+    {
+        var arguments = YouTubeImportService.BuildNoJavaScriptFallbackDownloadArguments(
+            "/var/lib/lessoncue/temporary/%(id)s.%(ext)s",
+            123456,
+            "https://www.youtube.com/watch?v=c4PmpM058is",
+            "/opt/lessoncue/deno");
+
+        Assert.Contains("best[ext=mp4]/best", arguments);
+        Assert.Contains("youtube:player_client=android", arguments);
+        Assert.DoesNotContain("--js-runtimes", arguments);
+        Assert.DoesNotContain("--merge-output-format", arguments);
+    }
+
+    [Fact]
+    public void StreamingFallbackMessagePreservesTheRecoveryReason()
+    {
+        var message = YouTubeImportService.StreamingFallbackMessage("fatal process out of memory");
+
+        Assert.Contains("streaming", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("out of memory", message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

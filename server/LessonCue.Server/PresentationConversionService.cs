@@ -11,6 +11,13 @@ public static class PresentationConversion
     public static bool IsConvertible(string fileName) =>
         MediaFormatCatalog.IsConvertibleDocument(Path.GetExtension(fileName));
 
+    public static bool IsPresentationExtension(string? extension) => extension?.ToLowerInvariant() is
+        ".ppt" or ".pptx" or ".pptm" or ".pps" or ".ppsx" or ".pot" or ".potx" or
+        ".odp" or ".odg" or ".otp" or ".fodp" or ".key";
+
+    public static string LibreOfficePdfFilter(string? extension) =>
+        IsPresentationExtension(extension) ? "pdf:impress_pdf_Export" : "pdf";
+
     public static bool TryGoogleSlidesExport(Uri source, out Uri export)
     {
         export = source;
@@ -133,12 +140,49 @@ public sealed class PresentationConversionService(
                     ?? FindExecutable("LESSONCUE_LIBREOFFICE_PATH", "soffice")
                     ?? throw new InvalidOperationException("Document conversion is unavailable. Install LibreOffice on the LessonCue server.");
                 var profile = Path.Combine(work, "libreoffice-profile");
-                await RunAsync(libreOffice,
-                    ["--headless", "--nologo", "--nodefault", "--nolockcheck", "--nofirststartwizard",
-                     $"-env:UserInstallation={new Uri(profile).AbsoluteUri}", "--convert-to", "pdf", "--outdir", work, input],
-                    work, ct);
+                var filter = PresentationConversion.LibreOfficePdfFilter(extension);
+                var converterOutput = "";
+                try
+                {
+                    converterOutput = await RunAsync(libreOffice,
+                        ["--headless", "--invisible", "--nologo", "--nodefault", "--norestore", "--nolockcheck", "--nofirststartwizard",
+                         $"-env:UserInstallation={new Uri(profile).AbsoluteUri}", "--convert-to", filter, "--outdir", work, input],
+                        work, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                {
+                    converterOutput = ex.Message;
+                }
                 pdf = Path.Combine(work, "source.pdf");
-                if (!File.Exists(pdf)) throw new InvalidOperationException("LibreOffice did not produce a PDF for this document.");
+                if (!HasContent(pdf))
+                {
+                    // LibreOffice can leave a profile or lock behind after a
+                    // crash, especially for very large presentations. Retry
+                    // once with a fresh profile and a fresh output directory so
+                    // a transient office-process failure does not strand the
+                    // upload in a permanent conversion error.
+                    var retryWork = Path.Combine(work, "libreoffice-retry");
+                    Directory.CreateDirectory(retryWork);
+                    var retryInput = Path.Combine(retryWork, "retry" + extension);
+                    File.Copy(original, retryInput);
+                    var retryProfile = Path.Combine(retryWork, "profile");
+                    var retryOutput = "";
+                    try
+                    {
+                        retryOutput = await RunAsync(libreOffice,
+                            ["--headless", "--invisible", "--nologo", "--nodefault", "--norestore", "--nolockcheck", "--nofirststartwizard",
+                             $"-env:UserInstallation={new Uri(retryProfile).AbsoluteUri}", "--convert-to", filter,
+                             "--outdir", retryWork, retryInput], retryWork, ct);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                    {
+                        retryOutput = ex.Message;
+                    }
+                    var retryPdf = Path.Combine(retryWork, "retry.pdf");
+                    if (HasContent(retryPdf)) pdf = retryPdf;
+                    else throw new InvalidOperationException(
+                        $"LibreOffice did not produce a PDF for this document after two attempts. {ConciseConversionOutput(converterOutput + " " + retryOutput)}");
+                }
             }
             var prefix = Path.Combine(work, "slide");
             var pdfinfo = FindExecutable("LESSONCUE_PDFINFO_PATH", "pdfinfo",
@@ -286,6 +330,14 @@ public sealed class PresentationConversionService(
             message.Contains("Invalid page", StringComparison.OrdinalIgnoreCase))
             message = "The local PDF renderer could not read this document. Verify that it opens normally, export it as a standard PDF, then retry.";
         return message.Length > 900 ? message[..900] : message;
+    }
+
+    private static bool HasContent(string path) => File.Exists(path) && new FileInfo(path).Length > 0;
+
+    private static string ConciseConversionOutput(string output)
+    {
+        var value = Regex.Replace(output.Replace('\r', ' ').Replace('\n', ' '), @"\s+", " ").Trim();
+        return value.Length > 700 ? value[..700] : value;
     }
 
     private static string AppendTag(string existing, string tag)

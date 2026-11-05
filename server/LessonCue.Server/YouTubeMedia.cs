@@ -10,6 +10,8 @@ public static partial class YouTubeMedia
     public static bool IsYouTubeUrl(Uri uri) =>
         HostIs(uri.Host, "youtube.com") || HostIs(uri.Host, "youtu.be") || HostIs(uri.Host, "youtube-nocookie.com");
 
+    public static bool HasStreamingFallback(string? value) => EmbedUrl(value) is not null;
+
     public static string? EmbedUrl(string? value)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || !IsYouTubeUrl(uri)) return null;
@@ -43,7 +45,7 @@ public sealed class YouTubeImportService(
     ILogger<YouTubeImportService> logger) : BackgroundService
 {
     private sealed record DownloadProfile(string Name, string Format, string? ExtractorArguments,
-        string? MergeOutputFormat, string FormatSort);
+        string? MergeOutputFormat, string FormatSort, bool UseJavaScriptRuntime = true);
 
     private static readonly DownloadProfile[] DownloadProfiles =
     [
@@ -51,15 +53,27 @@ public sealed class YouTubeImportService(
         new("android-adaptive-original-up-to-4k", "bestvideo+bestaudio/best",
             "youtube:player_client=android", "mkv", "res:2160"),
         new("android-progressive-fallback", "best[ext=mp4]",
-            "youtube:player_client=android", null, "res:2160")
+            "youtube:player_client=android", null, "res:2160"),
+        // Deno's challenge solver can exhaust its caged heap on some videos.
+        // Keep one final bounded download attempt that does not start Deno;
+        // valid YouTube links still have the streaming fallback below when
+        // the provider requires a JavaScript challenge.
+        new("android-progressive-no-js-fallback", "best[ext=mp4]/best",
+            "youtube:player_client=android", null, "res:1080", false)
     ];
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var recoveryPending = true;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                if (recoveryPending)
+                {
+                    await RecoverStreamingFallbacksAsync(stoppingToken);
+                    recoveryPending = false;
+                }
                 using var scope = scopes.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<LessonCueDb>();
                 var item = await db.MediaAssets.FirstOrDefaultAsync(
@@ -84,7 +98,9 @@ public sealed class YouTubeImportService(
             if (!Uri.TryCreate(item.SourceUrl, UriKind.Absolute, out var uri) || !YouTubeMedia.IsYouTubeUrl(uri))
                 throw new InvalidOperationException("Only YouTube URLs can be downloaded by this importer.");
             var executable = FindExecutable();
-            var denoExecutable = YouTubeRuntimeLocator.ResolveDenoExecutable();
+            string? denoExecutable = null;
+            try { denoExecutable = YouTubeRuntimeLocator.ResolveDenoExecutable(); }
+            catch (Exception ex) { logger.LogWarning(ex, "Deno is unavailable; the YouTube importer will try its no-JavaScript fallback"); }
             var snapshot = await storage.GetSnapshotAsync(db, ct);
             if (snapshot.RemainingBytes < 1024 * 1024)
                 throw new InvalidOperationException("The LessonCue storage allocation is full.");
@@ -158,11 +174,32 @@ public sealed class YouTubeImportService(
         }
         catch (Exception ex)
         {
-            item.ProcessingStatus = "failed";
-            item.ProcessingError = ex.Message.Length > 900 ? ex.Message[..900] : ex.Message;
+            var streamingFallback = string.IsNullOrWhiteSpace(item.RelativePath) &&
+                YouTubeMedia.HasStreamingFallback(item.SourceUrl);
+            if (streamingFallback)
+            {
+                item.ProcessingStatus = "ready";
+                item.ProcessingError = StreamingFallbackMessage(ex.Message);
+                item.CompatibilityStatus = "not-needed";
+                item.CompatibilityError = null;
+                item.OfflineEligible = false;
+                item.LinkKind = "youtube";
+                db.AuditEvents.Add(new AuditEvent
+                {
+                    Actor = "system", Action = "media.youtube.streaming-fallback", Object = item.Id.ToString(),
+                    Result = "fallback", Summary = $"{item.FileName}: {item.ProcessingError}"
+                });
+            }
+            else
+            {
+                item.ProcessingStatus = "failed";
+                item.ProcessingError = Concise(ex.Message);
+            }
             await db.SaveChangesAsync(CancellationToken.None);
             runtimeUpdates.RecordYouTubeFailure(ex);
-            logger.LogWarning(ex, "Could not import YouTube media {MediaId}", item.Id);
+            logger.LogWarning(ex, streamingFallback
+                ? "Could not import YouTube media {MediaId}; keeping its source URL as a streaming fallback"
+                : "Could not import YouTube media {MediaId}", item.Id);
         }
         finally
         {
@@ -182,19 +219,29 @@ public sealed class YouTubeImportService(
         string outputTemplate, long availableBytes, string sourceUrl, string denoExecutable) =>
         BuildDownloadArguments(outputTemplate, availableBytes, sourceUrl, denoExecutable, DownloadProfiles[2]);
 
+    internal static IReadOnlyList<string> BuildNoJavaScriptFallbackDownloadArguments(
+        string outputTemplate, long availableBytes, string sourceUrl, string denoExecutable) =>
+        BuildDownloadArguments(outputTemplate, availableBytes, sourceUrl, denoExecutable, DownloadProfiles[3]);
+
     private static IReadOnlyList<string> BuildDownloadArguments(
-        string outputTemplate, long availableBytes, string sourceUrl, string denoExecutable,
+        string outputTemplate, long availableBytes, string sourceUrl, string? denoExecutable,
         DownloadProfile profile)
     {
         var arguments = new List<string>
         {
             "--no-config", "--no-playlist", "--newline", "--restrict-filenames",
-            "--js-runtimes", $"deno:{denoExecutable}",
             "--retries", "3", "--fragment-retries", "3",
             "--max-filesize", availableBytes.ToString(CultureInfo.InvariantCulture),
             "-f", profile.Format,
             "-S", profile.FormatSort
         };
+        if (profile.UseJavaScriptRuntime)
+        {
+            if (string.IsNullOrWhiteSpace(denoExecutable))
+                throw new InvalidOperationException("The bundled Deno runtime is unavailable for this YouTube download profile.");
+            arguments.Insert(4, "--js-runtimes");
+            arguments.Insert(5, $"deno:{denoExecutable}");
+        }
         if (profile.ExtractorArguments is not null)
         {
             arguments.Add("--extractor-args");
@@ -222,7 +269,54 @@ public sealed class YouTubeImportService(
             message.Contains("page needs to be reloaded") || message.Contains("sabr") ||
             message.Contains("out of memory") || message.Contains("cagedheap") ||
             message.Contains("memory limit") || message.Contains("reservation") ||
-            message.Contains("did not produce a valid local file");
+            message.Contains("did not produce a valid local file") ||
+            message.Contains("bundled deno runtime") || message.Contains("javascript runtime") ||
+            message.Contains("deno is unavailable");
+    }
+
+    internal static string StreamingFallbackMessage(string? error)
+    {
+        var detail = Concise(error);
+        return string.IsNullOrWhiteSpace(detail)
+            ? "Offline download is unavailable; the original YouTube link remains available for streaming."
+            : $"Offline download is unavailable; the original YouTube link remains available for streaming. {detail}";
+    }
+
+    private async Task RecoverStreamingFallbacksAsync(CancellationToken ct)
+    {
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LessonCueDb>();
+        var candidates = await db.MediaAssets
+            .Where(x => x.SourceKind == "youtube-download" && x.ProcessingStatus == "failed")
+            .ToListAsync(ct);
+        var recoverable = candidates.Where(x => string.IsNullOrWhiteSpace(x.RelativePath) &&
+            YouTubeMedia.HasStreamingFallback(x.SourceUrl)).ToList();
+        foreach (var item in recoverable)
+        {
+            item.ProcessingStatus = "ready";
+            item.ProcessingError = StreamingFallbackMessage(item.ProcessingError);
+            item.CompatibilityStatus = "not-needed";
+            item.CompatibilityError = null;
+            item.OfflineEligible = false;
+            item.LinkKind = "youtube";
+            db.AuditEvents.Add(new AuditEvent
+            {
+                Actor = "system", Action = "media.youtube.streaming-fallback.recovered", Object = item.Id.ToString(),
+                Result = "fallback", Summary = $"Recovered {item.FileName} as a streaming-backed YouTube item."
+            });
+        }
+        if (recoverable.Count > 0)
+        {
+            await db.SaveChangesAsync(ct);
+            logger.LogWarning("Recovered {Count} failed YouTube item(s) as streaming fallbacks", recoverable.Count);
+        }
+    }
+
+    private static string Concise(string? message, int maxLength = 700)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return "";
+        var value = message.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return value.Length > maxLength ? value[..maxLength] : value;
     }
 
     private static void ResetStagingDirectory(string path)

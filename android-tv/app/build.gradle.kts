@@ -19,11 +19,11 @@ android {
         applicationId = "org.lessoncue.tv"
         minSdk = 26
         targetSdk = 36
-        // Amazon currently has version code 150 / 0.46.10 pending review.
+        // Keep every store submission above the last published version code.
         // Each Fire TV submission needs a monotonically increasing identity;
         // keep this code above every APK previously uploaded to Amazon.
-        versionCode = 155
-        versionName = "0.46.15"
+        versionCode = 156
+        versionName = "0.46.16"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "UPDATE_ENABLED", "false")
         buildConfigField(
