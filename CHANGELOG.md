@@ -4,6 +4,16 @@ This is the release history for LessonCue. Each release publishes both user and
 developer notes on GitHub; the app shows only the user changes before an
 administrator installs an update.
 
+## v0.46.43 — Release security hardening
+
+### User changes
+
+- The server image now refreshes its APT security packages during image creation, preventing a newly published base-image advisory from blocking release validation.
+
+### Developer changes
+
+- Release server/web version 0.46.43 and Android TV/Fire TV version 0.46.17 (version code 157).
+
 ## v0.46.42 — Media recovery and presentation conversion hardening
 
 ### User changes

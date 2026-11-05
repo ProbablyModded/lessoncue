@@ -20,6 +20,7 @@ ARG DENO_VERSION=2.9.7
 ARG DENO_LINUX_X64_SHA256=c6527f24f4b16031d3ae4fa9f658d5f11534c8d84ce7dc8502420280919c3490
 ARG DENO_LINUX_ARM64_SHA256=c832298b1ad4422481334855f6003e0f54145762c5a134f20a489511d2f65bbf
 RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade apt libapt-pkg6.0t64 \
     && apt-get install -y --no-install-recommends ffmpeg libreoffice-impress libreoffice-writer libreoffice-calc libreoffice-draw poppler-utils ca-certificates curl unzip util-linux coreutils \
         fonts-liberation \
     && optional_packages="" \
