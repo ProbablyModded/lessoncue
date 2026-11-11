@@ -4642,7 +4642,12 @@ public static class AdminApi
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    logger.LogWarning(ex, "Google Drive backup authorization did not complete");
+                    // Expired OAuth callback state is an expected user-action
+                    // outcome, not a server failure. Do not attach the
+                    // exception here: TroubleshootingLog treats exceptions as
+                    // failures and would otherwise report an old browser tab
+                    // as a live service outage.
+                    logger.LogWarning("Google Drive backup authorization did not complete: {Message}", ex.Message);
                 }
             }
 

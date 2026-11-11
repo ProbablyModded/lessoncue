@@ -17,7 +17,8 @@ public sealed class TroubleshootingLog : ILoggerProvider
     private const int MaximumFailureEntries = 10_000;
     private const long MaximumFileBytes = 4 * 1024 * 1024;
     private const long MaximumFailureFileBytes = 16 * 1024 * 1024;
-    private static readonly TimeSpan FailureRetention = TimeSpan.FromDays(7);
+    internal const int FailureRetentionDays = 7;
+    private static readonly TimeSpan FailureRetention = TimeSpan.FromDays(FailureRetentionDays);
     private const int MaximumDetailsLength = 12_000;
     private static readonly Regex CredentialPattern = new(
         """(?ix)(?<prefix>["']?(?:authorization|api[ _-]?key|token|password|secret)["']?\s*[:=]\s*["']?)(?:(?:bearer|basic)\s+)?(?<secret>[^"'\s,;}&]+)|(?<prefix>\b(?:authorization|api[ _-]?key|token|password|secret)\s+)(?:(?:bearer|basic)\s+)?(?<secret>[^"'\s,;}&]+)""",

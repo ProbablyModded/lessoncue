@@ -4,6 +4,29 @@ This is the release history for LessonCue. Each release publishes both user and
 developer notes on GitHub; the app shows only the user changes before an
 administrator installs an update.
 
+## v0.46.44 — Troubleshooting report accuracy
+
+### User changes
+
+- Failure reports now use the same seven-day retention window for audit events
+  as they do for runtime failures, so resolved historical incidents do not
+  drown out current diagnostics.
+- Successful report-delivery events are no longer reported as failures merely
+  because their summary says “Failures-only.”
+- An expired Google Drive authorization callback is recorded as a reconnect
+  prompt instead of a server outage. Existing offline media and YouTube
+  streaming safeguards remain unchanged.
+
+### Developer changes
+
+- Expired OAuth callback handling no longer attaches an exception to the
+  warning log, preventing expected user-action outcomes from entering the
+  failure store.
+- Added regression coverage for audit retention and successful-audit false
+  positives.
+- Release server/web version 0.46.44. This is a server-only release; Android
+  TV/Fire TV remains at version 0.46.17 (version code 157).
+
 ## v0.46.43 — Release security hardening
 
 ### User changes

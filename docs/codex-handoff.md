@@ -9,7 +9,7 @@ already knew.
 describes, the way `CHANGELOG.md` is updated. If a section here is wrong, that
 is a bug in the file — fix it rather than working around it.
 
-Last reviewed: 2026-11-05, against the `v0.46.43` release candidate.
+Last reviewed: 2026-11-11, against the `v0.46.44` release candidate.
 
 ---
 
@@ -37,9 +37,9 @@ because it silently discards work.
 
 | Component | Version | Notes |
 | --- | --- | --- |
-| Server (`csproj`) | 0.46.43 | release candidate; source of truth for the tag |
-| `package.json` | 0.46.43 | release candidate |
-| `WebPlayer.tsx` `APP_VERSION` | 0.46.43 | release candidate |
+| Server (`csproj`) | 0.46.44 | release candidate; source of truth for the tag |
+| `package.json` | 0.46.44 | release candidate |
+| `WebPlayer.tsx` `APP_VERSION` | 0.46.44 | release candidate |
 | Android TV `versionName` | 0.46.17 | release candidate; version code 157 |
 | Vega `manifest.toml` | 0.46.6 | parked, see §4 |
 

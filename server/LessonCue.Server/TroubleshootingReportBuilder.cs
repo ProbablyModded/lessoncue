@@ -33,22 +33,17 @@ public sealed class TroubleshootingReportBuilder(
         try
         {
             var auditQuery = db.AuditEvents.AsNoTracking();
-            if (failuresOnly)
-            {
-                auditQuery = auditQuery.Where(item =>
-                    EF.Functions.Like(item.Result, "%fail%") ||
-                    EF.Functions.Like(item.Result, "%error%") ||
-                    EF.Functions.Like(item.Result, "%defer%") ||
-                    EF.Functions.Like(item.Action, "%fail%") ||
-                    EF.Functions.Like(item.Action, "%error%") ||
-                    EF.Functions.Like(item.Action, "%defer%") ||
-                    item.Summary != null &&
-                    (EF.Functions.Like(item.Summary, "%fail%") ||
-                     EF.Functions.Like(item.Summary, "%error%") ||
-                     EF.Functions.Like(item.Summary, "%defer%")));
-            }
 
-            audit = (await auditQuery.OrderByDescending(x => x.Id).Take(limit).ToListAsync(ct))
+            var auditCandidates = await auditQuery.OrderByDescending(x => x.Id)
+                // SQLite cannot translate DateTimeOffset comparisons. Scan a
+                // bounded recent tail, then apply the seven-day cutoff in
+                // memory so the report remains portable across providers.
+                .Take(failuresOnly ? Math.Max(limit, 10_000) : limit)
+                .ToListAsync(ct);
+            var retainedAudit = failuresOnly
+                ? ApplyFailureAuditFilter(auditCandidates, DateTimeOffset.UtcNow).Take(limit)
+                : auditCandidates;
+            audit = retainedAudit
                 .OrderByDescending(x => x.Timestamp)
                 .ToArray();
         }
@@ -197,8 +192,8 @@ public sealed class TroubleshootingReportBuilder(
             shortenerDiagnostics,
             screens,
             new TroubleshootingRetentionDiagnostic(
-                2_000, 7,
-                "routine events: last 4 MB plus the prior rotated file; failures: separate seven-day store"),
+                2_000, TroubleshootingLog.FailureRetentionDays,
+                "routine events: last 4 MB plus the prior rotated file; runtime and audit failures: separate seven-day store"),
             diagnosticErrors,
             issues);
     }
@@ -217,6 +212,21 @@ public sealed class TroubleshootingReportBuilder(
         using (var gzip = new GZipStream(output, CompressionLevel.Fastest, leaveOpen: true))
             JsonSerializer.Serialize(gzip, report, JsonOptions);
         return output.ToArray();
+    }
+
+    internal static IEnumerable<AuditEvent> ApplyFailureAuditFilter(
+        IEnumerable<AuditEvent> events, DateTimeOffset now)
+    {
+        var cutoff = now.AddDays(-TroubleshootingLog.FailureRetentionDays);
+        // Audit summaries are evidence, not status. A successful event can
+        // legitimately contain words such as "Failures-only" in its summary,
+        // so Result is the authoritative success signal here. Apply the same
+        // detailed problem classifier used to build the report issues in
+        // memory. This also avoids treating a successful event whose summary
+        // contains "Failures-only" as a failure.
+        return events.Where(item => item.Timestamp >= cutoff &&
+            !string.Equals(item.Result, "success", StringComparison.OrdinalIgnoreCase) &&
+            TroubleshootingIssueBuilder.IsProblem(item));
     }
 }
 
@@ -521,16 +531,19 @@ public static class TroubleshootingIssueBuilder
         drafts.Add(new Draft(code, severity, component, summary, description, action, Limit(evidence, 4_000), at, at));
     }
 
-    private static bool IsProblem(AuditEvent item) =>
-        item.Result.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
-        item.Result.Contains("error", StringComparison.OrdinalIgnoreCase) ||
-        item.Result.Contains("defer", StringComparison.OrdinalIgnoreCase) ||
-        item.Action.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
-        item.Action.Contains("error", StringComparison.OrdinalIgnoreCase) ||
-        item.Action.Contains("defer", StringComparison.OrdinalIgnoreCase) ||
-        item.Summary?.Contains("fail", StringComparison.OrdinalIgnoreCase) == true ||
-        item.Summary?.Contains("error", StringComparison.OrdinalIgnoreCase) == true ||
-        item.Summary?.Contains("defer", StringComparison.OrdinalIgnoreCase) == true;
+    internal static bool IsProblem(AuditEvent item)
+    {
+        if (string.Equals(item.Result, "success", StringComparison.OrdinalIgnoreCase)) return false;
+        return item.Result.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
+               item.Result.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+               item.Result.Contains("defer", StringComparison.OrdinalIgnoreCase) ||
+               item.Action.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
+               item.Action.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+               item.Action.Contains("defer", StringComparison.OrdinalIgnoreCase) ||
+               item.Summary?.Contains("fail", StringComparison.OrdinalIgnoreCase) == true ||
+               item.Summary?.Contains("error", StringComparison.OrdinalIgnoreCase) == true ||
+               item.Summary?.Contains("defer", StringComparison.OrdinalIgnoreCase) == true;
+    }
 
     private static bool ContainsConnectionFailure(string? value) =>
         !string.IsNullOrWhiteSpace(value) &&
