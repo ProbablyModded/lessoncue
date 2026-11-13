@@ -1,7 +1,7 @@
 # LessonCue Link Shortener Companion
 
 This directory vendors the `companion/` application from
-[nickhighland/Link-Shortener-Companion](https://github.com/nickhighland/Link-Shortener-Companion)
+[ProbablyModded/Link-Shortener-Companion](https://github.com/ProbablyModded/Link-Shortener-Companion)
 at commit `8f4f841` (2026-08-25), with LessonCue's password-reset integration
 applied on top. It is built into the optional shortener
 Compose service; it does not replace or proxy the Shlink API.

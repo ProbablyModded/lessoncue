@@ -2501,7 +2501,7 @@ export function Settings({
                 </button>
                 <a
                   className="button"
-                  href="https://github.com/nickhighland/lessoncue/blob/main/docs/local-network-security.md"
+                  href="https://github.com/ProbablyModded/lessoncue/blob/main/docs/local-network-security.md"
                   target="_blank"
                   rel="noreferrer"
                 >

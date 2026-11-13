@@ -4,7 +4,7 @@ Updated: 2026-09-14. Status: twenty-five findings have local fixes; comprehensiv
 
 Coverage estimate requested by user: 31 of 1,167 baseline files inspected at least partially (2.7%, approximately 3%); 7 fully reviewed/verified (0.6%), 24 partial, 1,136 unreviewed. New regression/helper files are excluded from that denominator. This is file coverage, not a reliable estimate of effort remaining; large high-risk paths have received disproportionate attention. Do not count 25 fixes as completion of the comprehensive audit.
 
-- Repository: `/Users/nickhighland/Developer/LessonCue`.
+- Repository: `<local LessonCue checkout>`.
 - Baseline HEAD: `204d8ca4762e01dcd88764b0668659737b0fc424` on `codex/release-v0.46.3`.
 - Published v0.46.3/main at last release verification: `a9dff6c8ffacaf2030aa880aac31558e7df2cab9`.
 - Local changes: Android URL/discovery/API/cache/updater/reconnect/navigation fixes and web host snapshot/lifetime/polling fixes, regression tests and audit documents; not committed or released.

@@ -1,6 +1,6 @@
 # Reliability review — 2026-09-12
 
-Reviewed `main` at `d843be5` in `/Users/nickhighland/Developer/LessonCue`, plus the local fixes described below. No release, push, live-server modification, or native Android change was made. This is a targeted reliability review, not a guarantee that the entire application is defect-free.
+Reviewed `main` at `d843be5` in `<local LessonCue checkout>`, plus the local fixes described below. No release, push, live-server modification, or native Android change was made. This is a targeted reliability review, not a guarantee that the entire application is defect-free.
 
 ## Activity and phone fixes in this working tree
 

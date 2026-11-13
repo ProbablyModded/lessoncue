@@ -4,7 +4,7 @@ Prepared 2026-09-14. This is the execution plan, not a completed audit.
 
 ## Start here
 
-- Repository: `/Users/nickhighland/Developer/LessonCue`. The old Documents path is stale and exposed the repository to iCloud duplication.
+- Repository: `<local LessonCue checkout>`. The old Documents path is stale and exposed the repository to iCloud duplication.
 - Resume state: `docs/bug-audit-checkpoint.md`. File coverage: `docs/bug-audit-coverage.tsv`.
 - Inventory baseline: local commit `204d8ca4762e01dcd88764b0668659737b0fc424`, version 0.46.3. Published main/tag commit was `a9dff6c8ffacaf2030aa880aac31558e7df2cab9`. Reconcile these trees and current main before implementing fixes.
 - Previous targeted evidence: `docs/reliability-review-2026-09-12.md`, including its September 13 continuation. Reuse valid evidence; do not mark the whole application reviewed on its basis.
@@ -90,7 +90,7 @@ Trace EF schema upgrades, transactions/concurrency, retention and recycle-bin re
 
 ### B11 — Shortener and Link Studio [Medium; High for credentials]
 
-Review Shortener services, reserved codes, health gating, install/update scripts, compose and the shipped shortener-companion copy. Compare upstream `/Users/nickhighland/Developer/Link-Shortener` only if present and relevant to the shipped source. Check real Shlink API contracts in an isolated stack where Docker is available. Cover unhealthy startup, restart/persistence, key validation, password-reset file ownership/atomicity, both account roles, favicon cache/ICO endpoint, charts and responsive layout. Verify direct short-domain routing and safe fallback; do not resurrect the deleted reverse proxy, hard-code domains, or edit the live reserved-code list.
+Review Shortener services, reserved codes, health gating, install/update scripts, compose and the shipped shortener-companion copy. Compare upstream `<upstream Link-Shortener checkout>` only if present and relevant to the shipped source. Check real Shlink API contracts in an isolated stack where Docker is available. Cover unhealthy startup, restart/persistence, key validation, password-reset file ownership/atomicity, both account roles, favicon cache/ICO endpoint, charts and responsive layout. Verify direct short-domain routing and safe fallback; do not resurrect the deleted reverse proxy, hard-code domains, or edit the live reserved-code list.
 
 ### B12 — Installation, update, release, and dependencies [High for rollback]
 
@@ -128,4 +128,4 @@ Deliver a coverage report, prioritized findings with fixes and evidence, reprodu
 
 ## Resume prompt
 
-> Resume the LessonCue bug audit in /Users/nickhighland/Developer/LessonCue. Read docs/bug-audit-checkpoint.md and the next relevant section of docs/bug-audit-plan.md. Check changed files against docs/bug-audit-coverage.tsv. Continue the next incomplete slice, reproduce and fix confirmed bugs, run focused checks, and update the checkpoint and coverage before stopping. Conserve tokens; do not restart the entire review or release changes. Tell me if the next specific investigation needs High reasoning.
+> Resume the LessonCue bug audit in <local LessonCue checkout>. Read docs/bug-audit-checkpoint.md and the next relevant section of docs/bug-audit-plan.md. Check changed files against docs/bug-audit-coverage.tsv. Continue the next incomplete slice, reproduce and fix confirmed bugs, run focused checks, and update the checkpoint and coverage before stopping. Conserve tokens; do not restart the entire review or release changes. Tell me if the next specific investigation needs High reasoning.

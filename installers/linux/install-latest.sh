@@ -228,7 +228,7 @@ if [[ -n "${requested_version}" ]]; then
   version="${requested_version}"
   if [[ "${version}" != v* ]]; then version="v${version}"; fi
 else
-  version_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' 'https://github.com/nickhighland/lessoncue/releases/latest')"
+  version_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' 'https://github.com/ProbablyModded/lessoncue/releases/latest')"
   version="${version_url##*/}"
 fi
 if [[ ! "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+)*$ ]]; then
@@ -332,7 +332,7 @@ trap 'rm -rf "${workdir}"' EXIT
 
 echo "Downloading LessonCue ${version} for ${runtime}..."
 asset="LessonCue-Server-${runtime}.tar.gz"
-release_root="https://github.com/nickhighland/lessoncue/releases/download/${version}"
+release_root="https://github.com/ProbablyModded/lessoncue/releases/download/${version}"
 curl -fL "${release_root}/${asset}" -o "${workdir}/${asset}"
 curl -fL "${release_root}/SHA256SUMS" -o "${workdir}/SHA256SUMS"
 curl -fL "${release_root}/SHA256SUMS.sig" -o "${workdir}/SHA256SUMS.sig"

@@ -26,7 +26,7 @@ android {
         buildConfigField(
             "String",
             "UPDATE_MANIFEST_URL",
-            "\"https://github.com/nickhighland/lessoncue/releases/latest/download/update.json\""
+            "\"https://github.com/ProbablyModded/lessoncue/releases/latest/download/update.json\""
         )
         buildConfigField("String", "UPDATE_CHANNEL", "\"stable\"")
         buildConfigField(

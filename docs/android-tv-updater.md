@@ -29,7 +29,7 @@ The following generated `BuildConfig` values isolate distribution policy from up
 | Value | Production setting |
 | --- | --- |
 | `UPDATE_ENABLED` | `true` for the sideload flavor and `false` for the store flavor |
-| `UPDATE_MANIFEST_URL` | `https://github.com/nickhighland/lessoncue/releases/latest/download/update.json` |
+| `UPDATE_MANIFEST_URL` | `https://github.com/ProbablyModded/lessoncue/releases/latest/download/update.json` |
 | `UPDATE_CHANNEL` | `stable` |
 | `UPDATE_ALLOWED_HOSTS` | `github.com`, `objects.githubusercontent.com`, and `release-assets.githubusercontent.com` |
 | `UPDATE_SIGNING_CERT_SHA256` | LessonCue's permanent production certificate fingerprint |
@@ -48,7 +48,7 @@ Every tagged release publishes an `update.json` asset:
   "channel": "stable",
   "versionCode": 30,
   "versionName": "0.26.0",
-  "apkUrl": "https://github.com/nickhighland/lessoncue/releases/download/v0.26.0/lessoncue-tv.apk",
+  "apkUrl": "https://github.com/ProbablyModded/lessoncue/releases/download/v0.26.0/lessoncue-tv.apk",
   "sha256": "lowercase 64-character SHA-256",
   "fileSize": 11000000,
   "mandatory": false,

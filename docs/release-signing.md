@@ -56,7 +56,7 @@ Verify GitHub provenance:
 
 ```bash
 gh attestation verify LessonCue-Server-linux-x64.tar.gz \
-  --repo nickhighland/lessoncue
+  --repo ProbablyModded/lessoncue
 ```
 
 ## Rotation and compromise recovery

@@ -185,7 +185,7 @@ class UpdateManagerIntegrationTest {
         channel = "stable",
         versionCode = versionCode,
         versionName = "test-$versionCode",
-        apkUrl = "https://github.com/nickhighland/lessoncue/releases/download/test/lessoncue-tv.apk",
+        apkUrl = "https://github.com/ProbablyModded/lessoncue/releases/download/test/lessoncue-tv.apk",
         sha256 = "a".repeat(64),
         fileSize = null,
         mandatory = false,

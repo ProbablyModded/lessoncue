@@ -1,7 +1,7 @@
 # LessonCue Error Report
 
 Date: 2026-09-14
-Repository: `/Users/nickhighland/Developer/LessonCue`
+Repository: `<local LessonCue checkout>`
 Revision: HEAD `faf09c9` on branch `codex/amazon-active-edit-fix`
 Method: read-only review. No source files were modified. Static checks run: `npm run typecheck:admin`, `npm run lint`, `npm run build:admin` (via tests), `npm run test:units`, `npm run test:protocol`, `npm run test:amazon`, `dotnet build`, `dotnet test` (554/554 passed). Six parallel read-only review passes covered the ASP.NET Core server, the web admin, scripts/CI/installers, the native TV clients, client/server activity verb contracts, and public assets/tests. Every finding below was re-read at the cited lines before inclusion.
 
@@ -637,7 +637,7 @@ validation.
 ### Final publication confirmation — 2026-09-20
 
 Release `v0.46.6` is now published at
-https://github.com/nickhighland/lessoncue/releases/tag/v0.46.6. The release is
+https://github.com/ProbablyModded/lessoncue/releases/tag/v0.46.6. The release is
 not a draft or prerelease and contains the signed checksums, signature, SBOM,
 third-party notices, Linux x64/arm64 packages, Windows package, Android TV
 Google Play bundle, store APK, sideload APK, update metadata, and the Amazon
