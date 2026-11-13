@@ -775,7 +775,7 @@ if [[ "${REQUEST}" == shortener:install ]]; then
   SHORTENER_WORK="$(mktemp -d)"
   trap 'rm -rf "${SHORTENER_WORK}"' EXIT
   BUNDLE=LessonCue-URL-Shortener.tar.gz
-  BASE="https://github.com/nickhighland/lessoncue/releases/download/v${INSTALLED_VERSION#v}"
+  BASE="https://github.com/ProbablyModded/lessoncue/releases/download/v${INSTALLED_VERSION#v}"
 
   # Checked against the signed checksums, the same as every other download.
   if ! curl -fL "${BASE}/${BUNDLE}" -o "${SHORTENER_WORK}/${BUNDLE}" 2>/dev/null ||
@@ -1022,7 +1022,7 @@ if [[ -z "${CURRENT_VERSION}" && -x /opt/lessoncue/LessonCue.Server ]]; then
 fi
 if [[ -z "${CURRENT_VERSION}" ]]; then CURRENT_VERSION=unknown; fi
 
-REPOSITORY="${LESSONCUE_UPDATE_REPOSITORY:-https://github.com/nickhighland/lessoncue}"
+REPOSITORY="${LESSONCUE_UPDATE_REPOSITORY:-https://github.com/ProbablyModded/lessoncue}"
 if [[ -n "${LESSONCUE_UPDATE_VERSION:-}" ]]; then
   VERSION="${LESSONCUE_UPDATE_VERSION}"
 elif [[ "${REQUEST}" =~ ^update:(v?[0-9]+\.[0-9]+\.[0-9]+)(:|$) ]]; then

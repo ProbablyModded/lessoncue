@@ -803,7 +803,7 @@ export function Auth({
               )}
               <a
                 className="recovery-link"
-                href="https://github.com/nickhighland/lessoncue/blob/main/docs/installation.md#reset-a-forgotten-administrator-password"
+                href="https://github.com/ProbablyModded/lessoncue/blob/main/docs/installation.md#reset-a-forgotten-administrator-password"
                 target="_blank"
                 rel="noreferrer"
               >

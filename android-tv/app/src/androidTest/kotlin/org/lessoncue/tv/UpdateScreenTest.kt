@@ -18,7 +18,7 @@ class UpdateScreenTest {
         channel = "stable",
         versionCode = BuildConfig.VERSION_CODE + 1L,
         versionName = "next",
-        apkUrl = "https://github.com/nickhighland/lessoncue/releases/latest/download/lessoncue-tv.apk",
+        apkUrl = "https://github.com/ProbablyModded/lessoncue/releases/latest/download/lessoncue-tv.apk",
         sha256 = "a".repeat(64),
         fileSize = 20L * 1024L * 1024L,
         mandatory = false,

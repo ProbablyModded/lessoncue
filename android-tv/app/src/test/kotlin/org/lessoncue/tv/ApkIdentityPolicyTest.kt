@@ -12,7 +12,7 @@ class ApkIdentityPolicyTest {
         channel = "stable",
         versionCode = 30,
         versionName = "0.26.0",
-        apkUrl = "https://github.com/nickhighland/lessoncue/releases/latest/download/lessoncue-tv.apk",
+        apkUrl = "https://github.com/ProbablyModded/lessoncue/releases/latest/download/lessoncue-tv.apk",
         sha256 = "a".repeat(64),
         fileSize = 100,
         mandatory = false,

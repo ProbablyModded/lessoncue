@@ -147,7 +147,7 @@ public static class RecoveryModeApp
               sudo journalctl -u lessoncue -n 200 --no-pager
               df -h /var/lib/lessoncue
               sudo systemctl start lessoncue-update-recovery.service</pre>
-              <p>Use a verified backup with the same or a newer LessonCue version. See the <a href="https://github.com/nickhighland/lessoncue/blob/main/docs/troubleshooting.md#lessoncue-started-in-recovery-mode">recovery instructions</a> from another device.</p>
+              <p>Use a verified backup with the same or a newer LessonCue version. See the <a href="https://github.com/ProbablyModded/lessoncue/blob/main/docs/troubleshooting.md#lessoncue-started-in-recovery-mode">recovery instructions</a> from another device.</p>
             </main></body></html>
             """;
     }

@@ -119,7 +119,7 @@ public sealed class SignageWidgetService(IServiceScopeFactory scopeFactory, IHtt
         using var request = new HttpRequestMessage(HttpMethod.Get, source);
         if (request.RequestUri?.Host.Equals("api.weather.gov", StringComparison.OrdinalIgnoreCase) == true)
         {
-            request.Headers.UserAgent.ParseAdd("LessonCue/0.36 (+https://github.com/nickhighland/lessoncue)");
+            request.Headers.UserAgent.ParseAdd("LessonCue/0.36 (+https://github.com/ProbablyModded/lessoncue)");
             request.Headers.Accept.ParseAdd("application/geo+json");
         }
         credentials.Apply(request, credentialKey);

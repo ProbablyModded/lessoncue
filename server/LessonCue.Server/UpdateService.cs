@@ -69,7 +69,7 @@ public sealed class UpdateService(
             try
             {
                 var client = clients.CreateClient("updates");
-                using var response = await client.GetAsync("https://api.github.com/repos/nickhighland/lessoncue/releases/latest", ct);
+                using var response = await client.GetAsync("https://api.github.com/repos/ProbablyModded/lessoncue/releases/latest", ct);
                 response.EnsureSuccessStatusCode();
                 await using var stream = await response.Content.ReadAsStreamAsync(ct);
                 using var document = await JsonDocument.ParseAsync(stream, cancellationToken: ct);

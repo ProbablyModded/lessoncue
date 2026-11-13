@@ -114,7 +114,7 @@ const policyHtml = `<!doctype html>
   <link rel="stylesheet" href="privacy.css">
 </head>
 <body>
-  <nav><a class="brand" href="./"><img src="assets/lessoncue-icon.svg" alt=""> LessonCue</a><div><a href="./">Overview</a><a href="install.html">Install</a><a href="implementation.html">Build</a><a href="roadmap.html">Roadmap</a><a class="repo" href="https://github.com/nickhighland/lessoncue">GitHub ↗</a></div></nav>
+  <nav><a class="brand" href="./"><img src="assets/lessoncue-icon.svg" alt=""> LessonCue</a><div><a href="./">Overview</a><a href="install.html">Install</a><a href="implementation.html">Build</a><a href="roadmap.html">Roadmap</a><a class="repo" href="https://github.com/ProbablyModded/lessoncue">GitHub ↗</a></div></nav>
   <main class="page policy-page">
     <p class="eyebrow">LEGAL</p>
     <section class="policy-content">
@@ -122,7 +122,7 @@ ${renderPolicy(markdown).split("\n").map((line) => `      ${line}`).join("\n")}
     </section>
     <p><a class="secondary" href="privacy.md">View the source Markdown ↗</a></p>
   </main>
-  <footer><a class="brand" href="./"><img src="assets/lessoncue-icon.svg" alt=""> LessonCue</a><p>Self-hosted media scheduling for schools, churches, and learning organizations.</p><a href="https://github.com/nickhighland/lessoncue">Source and releases ↗</a></footer>
+  <footer><a class="brand" href="./"><img src="assets/lessoncue-icon.svg" alt=""> LessonCue</a><p>Self-hosted media scheduling for schools, churches, and learning organizations.</p><a href="https://github.com/ProbablyModded/lessoncue">Source and releases ↗</a></footer>
 </body>
 </html>
 `;

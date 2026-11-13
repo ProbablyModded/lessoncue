@@ -17,7 +17,7 @@ Paste these two commands into the SSH session. The first installs the one prereq
 ```bash
 sudo apt-get update
 sudo apt-get install -y curl ca-certificates
-curl -fsSL https://github.com/nickhighland/lessoncue/releases/latest/download/install-lessoncue.sh | bash
+curl -fsSL https://github.com/ProbablyModded/lessoncue/releases/latest/download/install-lessoncue.sh | bash
 ```
 
 The final message says `LessonCue is ready` and prints `http://lessoncue.local` plus a numeric fallback such as `http://192.168.4.75`. The SSH connection can then be closed; systemd keeps LessonCue running and starts it again after reboot.
@@ -204,7 +204,7 @@ sudo bash installers/linux/install-latest.sh --prerequisites-only
 This installs Git, Docker Engine, Docker Compose, FFmpeg/FFprobe, LibreOffice (Impress, Writer, Calc, and Draw), Poppler, the media sandbox, and available optional codec libraries. Continue with the Docker commands below to build the checked-out source tree.
 
 ```bash
-git clone https://github.com/nickhighland/lessoncue.git
+git clone https://github.com/ProbablyModded/lessoncue.git
 cd lessoncue
 cp .env.example .env
 mkdir -p lessoncue-data
@@ -291,13 +291,13 @@ The first response should say `healthy`; the second should report the server ide
 For ordinary sideloading, download the production-signed APK from the same stable latest-release address:
 
 ```text
-https://github.com/nickhighland/lessoncue/releases/latest/download/lessoncue-tv.apk
+https://github.com/ProbablyModded/lessoncue/releases/latest/download/lessoncue-tv.apk
 ```
 
 The matching test build remains available alongside it:
 
 ```text
-https://github.com/nickhighland/lessoncue/releases/latest/download/LessonCue-AndroidTV-debug.apk
+https://github.com/ProbablyModded/lessoncue/releases/latest/download/LessonCue-AndroidTV-debug.apk
 ```
 
 Use the debug build only for testing. Enable installation from unknown sources only for the file-manager or deployment tool you use, install the APK, then disable that permission again.
