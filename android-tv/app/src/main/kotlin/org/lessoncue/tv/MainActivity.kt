@@ -50,6 +50,8 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -72,6 +74,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.ContentScale
@@ -114,6 +117,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.Constraints
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import coil.compose.AsyncImage
@@ -160,6 +164,16 @@ private sealed interface AppScreen {
     ) : AppScreen
 }
 
+private data class ManualDownloadState(
+    val identity: DeviceIdentity,
+    val playlist: LessonPlaylist,
+    val items: List<CueItem>,
+    val cachedCount: Int,
+    val started: Boolean = false,
+    val completed: Boolean = false,
+    val error: String? = null,
+)
+
 @Composable
 fun LessonCueApp() {
     val context = LocalContext.current
@@ -184,6 +198,7 @@ fun LessonCueApp() {
     var diagnosticCaptureVisible by remember { mutableStateOf(false) }
     var interruptedPlayer by remember { mutableStateOf<AppScreen.Player?>(null) }
     var connectionMode by remember { mutableStateOf(ConnectionMode.Offline) }
+    var manualDownload by remember { mutableStateOf<ManualDownloadState?>(null) }
 
     val activity = context as? MainActivity
     // Keep Android TV/Fire TV from dimming or launching its screensaver while
@@ -276,6 +291,27 @@ fun LessonCueApp() {
                 playback = playbackCommandError?.let { playbackTelemetry.copy(state = "error", error = it) } ?: playbackTelemetry,
                 cachedItems = cachedItems, totalItems = totalManifestItems) }
             heartbeatWake.awaitNext(if (playbackTelemetry.state in setOf("playing", "loading", "buffering")) 2_000 else 30_000)
+        }
+    }
+
+    LaunchedEffect(manualDownload?.playlist?.id, manualDownload?.started) {
+        val initial = manualDownload?.takeIf { it.started } ?: return@LaunchedEffect
+        if (initial.items.isEmpty()) {
+            manualDownload = manualDownload?.takeIf { it.playlist.id == initial.playlist.id }
+                ?.copy(cachedCount = 0, completed = true)
+            return@LaunchedEffect
+        }
+        while (true) {
+            val cached = withContext(Dispatchers.IO) {
+                val directory = context.filesDir.resolve("media")
+                initial.items.count { findUsableCacheFile(directory, it) != null }
+            }
+            val completed = cached >= initial.items.size
+            manualDownload = manualDownload
+                ?.takeIf { it.playlist.id == initial.playlist.id && it.started }
+                ?.copy(cachedCount = cached, completed = completed)
+            if (completed) break
+            kotlinx.coroutines.delay(750)
         }
     }
 
@@ -471,6 +507,7 @@ fun LessonCueApp() {
                         current.identity,
                         connectionMode,
                         onStart = { playlist -> screen = AppScreen.LessonDetail(current.identity, current.manifest, playlist) },
+                        onManualDownload = { playlist -> manualDownload = manualDownloadState(context, current.identity, playlist) },
                         onCheckForUpdates = (updateManager::checkManually).takeIf { BuildConfig.UPDATE_ENABLED }
                     )
                 }
@@ -493,6 +530,7 @@ fun LessonCueApp() {
                     }
                     LessonDetailScreen(current.playlist, current.manifest.screenName, connectionMode,
                         onBack = { screen = AppScreen.Library(current.identity, current.manifest) },
+                        onManualDownload = { playlist -> manualDownload = manualDownloadState(context, current.identity, playlist) },
                         onPlay = { items, index -> screen = AppScreen.Player(current.playlist, items, index) })
                 }
                 is AppScreen.Player -> {
@@ -596,6 +634,25 @@ fun LessonCueApp() {
                     }
                 )
             }
+            manualDownload?.let { state ->
+                ManualDownloadOverlay(
+                    state = state,
+                    onDownload = {
+                        if (state.items.isEmpty() || state.cachedCount >= state.items.size) {
+                            manualDownload = state.copy(started = true, completed = true, error = null)
+                        } else {
+                            runCatching {
+                                enqueuePriorityLessonDownload(context, state.identity, state.playlist)
+                            }.onSuccess {
+                                manualDownload = state.copy(started = true, error = null)
+                            }.onFailure { error ->
+                                manualDownload = state.copy(started = true, error = error.message ?: "Could not start the download.")
+                            }
+                        }
+                    },
+                    onDismiss = { manualDownload = null }
+                )
+            }
           }
         }
     }
@@ -624,26 +681,55 @@ private fun ConnectScreen(message: String?, onConnect: (String, String) -> Unit)
         "Connect this TV",
         "LessonCue TV uses server pairing, not a username and password. Enter a reachable LessonCue server address, then use its six-digit pairing PIN."
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(30.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text("DEVICE NAME", color = Muted, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                Spacer(Modifier.height(8.dp))
-                TvTextField(
-                    deviceName,
-                    { deviceName = it.take(MAX_DEVICE_NAME_LENGTH) },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = "Room or display name"
-                )
-            }
-            Column(Modifier.weight(1f)) {
-                Text("SERVER ADDRESS", color = Muted, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                Spacer(Modifier.height(8.dp))
-                TvTextField(
-                    address,
-                    { address = it },
-                    modifier = Modifier.fillMaxWidth().focusRequester(addressFocus),
-                    placeholder = "http://192.168.1.25"
-                )
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val compact = maxWidth < 760.dp
+            val fieldModifier = Modifier.fillMaxWidth()
+            if (compact) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Column {
+                        Text("DEVICE NAME", color = Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Spacer(Modifier.height(6.dp))
+                        TvTextField(
+                            deviceName,
+                            { deviceName = it.take(MAX_DEVICE_NAME_LENGTH) },
+                            modifier = fieldModifier,
+                            placeholder = "Room or display name"
+                        )
+                    }
+                    Column {
+                        Text("SERVER ADDRESS", color = Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Spacer(Modifier.height(6.dp))
+                        TvTextField(
+                            address,
+                            { address = it },
+                            modifier = fieldModifier.focusRequester(addressFocus),
+                            placeholder = "http://192.168.1.25"
+                        )
+                    }
+                }
+            } else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(30.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("DEVICE NAME", color = Muted, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Spacer(Modifier.height(8.dp))
+                        TvTextField(
+                            deviceName,
+                            { deviceName = it.take(MAX_DEVICE_NAME_LENGTH) },
+                            modifier = fieldModifier,
+                            placeholder = "Room or display name"
+                        )
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("SERVER ADDRESS", color = Muted, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Spacer(Modifier.height(8.dp))
+                        TvTextField(
+                            address,
+                            { address = it },
+                            modifier = fieldModifier.focusRequester(addressFocus),
+                            placeholder = "http://192.168.1.25"
+                        )
+                    }
+                }
             }
         }
         message?.let {
@@ -652,22 +738,45 @@ private fun ConnectScreen(message: String?, onConnect: (String, String) -> Unit)
                 Modifier.fillMaxWidth().background(Coral.copy(alpha = .12f), RoundedCornerShape(14.dp))
                     .border(1.dp, Coral.copy(alpha = .55f), RoundedCornerShape(14.dp)).padding(18.dp)
             ) {
-                Text(it, color = Cream, fontSize = 17.sp)
+                Text(it, color = Cream, fontSize = 17.sp, maxLines = 4,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
         }
         Spacer(Modifier.height(26.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "This display is paired to a LessonCue server; it does not use a personal account login. LessonCue will also search the local network automatically.",
-                color = Muted,
-                fontSize = 16.sp,
-                modifier = Modifier.weight(1f)
-            )
-            LessonCueButton(
-                onClick = { onConnect(address, deviceName.trim().ifBlank { defaultDeviceName() }) },
-                enabled = deviceName.isNotBlank(),
-                modifier = Modifier.width(220.dp).height(62.dp).focusRequester(findServerFocus)
-            ) { Text("Find server", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val compact = maxWidth < 900.dp
+            if (compact) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(
+                        "This display is paired to a LessonCue server; it does not use a personal account login. LessonCue will also search the local network automatically.",
+                        color = Muted,
+                        fontSize = 14.sp,
+                        maxLines = 4,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    LessonCueButton(
+                        onClick = { onConnect(address, deviceName.trim().ifBlank { defaultDeviceName() }) },
+                        enabled = deviceName.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().height(56.dp).focusRequester(findServerFocus)
+                    ) { Text("Find server", fontSize = 17.sp, fontWeight = FontWeight.Bold) }
+                }
+            } else {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "This display is paired to a LessonCue server; it does not use a personal account login. LessonCue will also search the local network automatically.",
+                        color = Muted,
+                        fontSize = 16.sp,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 3,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    LessonCueButton(
+                        onClick = { onConnect(address, deviceName.trim().ifBlank { defaultDeviceName() }) },
+                        enabled = deviceName.isNotBlank(),
+                        modifier = Modifier.width(220.dp).height(62.dp).focusRequester(findServerFocus)
+                    ) { Text("Find server", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
         }
     }
 }
@@ -834,6 +943,7 @@ internal fun LibraryScreen(
     identity: DeviceIdentity,
     connectionMode: ConnectionMode,
     onStart: (LessonPlaylist) -> Unit,
+    onManualDownload: (LessonPlaylist) -> Unit = {},
     onCheckForUpdates: (() -> Unit)?
 ) {
     val signage = manifest.signage.firstOrNull { it.mode == "emergency" } ?: manifest.signage.firstOrNull()
@@ -873,6 +983,7 @@ internal fun LibraryScreen(
     var visibleAdditionalCount by remember(lessonIds) { mutableIntStateOf(2) }
     val visibleAdditionalLessons = additionalLessons.take(visibleAdditionalCount)
     val lessonListState = rememberLazyListState()
+    val firstAdditionalFocus = remember(lessonIds) { FocusRequester() }
     LaunchedEffect(lessonIds, featured?.id, interactionMode) {
         if (featured != null && interactionMode == LibraryInteractionMode.Lessons) {
             if (focusedLessonId !in lessonIds) {
@@ -933,9 +1044,11 @@ internal fun LibraryScreen(
                               readiness = mediaReadiness(context, playlist),
                               modifier = Modifier.weight(1.1f).fillMaxSize(),
                               initialFocusRequester = firstFocus,
+                              downFocusRequester = firstAdditionalFocus.takeIf { visibleAdditionalLessons.isNotEmpty() },
                               selected = playlist.id == focusedLessonId,
                               onFocused = { focusedLessonId = playlist.id },
-                              onOpen = { onStart(playlist) }
+                              onOpen = { onStart(playlist) },
+                              onLongClick = { onManualDownload(playlist) }
                           )
                       }
                       TvPanel(Modifier.weight(1f).fillMaxSize()) {
@@ -946,13 +1059,16 @@ internal fun LibraryScreen(
                               Spacer(Modifier.height(18.dp))
                               LazyColumn(Modifier.weight(1f), state = lessonListState,
                                   verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                  itemsIndexed(visibleAdditionalLessons, key = { _, playlist -> playlist.id }) { _, playlist ->
+                                  itemsIndexed(visibleAdditionalLessons, key = { _, playlist -> playlist.id }) { index, playlist ->
                                       CompactLessonCard(
                                           playlist = playlist,
                                           onOpen = { onStart(playlist) },
+                                          onLongClick = { onManualDownload(playlist) },
                                           onFocused = { focusedLessonId = playlist.id },
                                           selected = playlist.id == focusedLessonId,
-                                          modifier = remoteListItemModifier()
+                                          modifier = remoteListItemModifier(),
+                                          initialFocusRequester = firstAdditionalFocus.takeIf { index == 0 },
+                                          upFocusRequester = firstFocus.takeIf { index == 0 }
                                       )
                                   }
                                   if (visibleAdditionalLessons.size < additionalLessons.size) {
@@ -994,14 +1110,19 @@ private fun FeaturedLessonPanel(
     readiness: MediaReadiness,
     modifier: Modifier,
     initialFocusRequester: FocusRequester,
+    downFocusRequester: FocusRequester?,
     selected: Boolean,
     onFocused: () -> Unit,
-    onOpen: () -> Unit
+    onOpen: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     val previewCues = playlist.timeline().take(4)
     FocusedTvCard(
         onClick = onOpen,
-        modifier = modifier.testTag("lesson-card-${playlist.id}"),
+        onLongClick = onLongClick,
+        modifier = modifier
+            .focusProperties { downFocusRequester?.let { down = it } }
+            .testTag("lesson-card-${playlist.id}"),
         onFocused = onFocused,
         initialFocusRequester = initialFocusRequester,
         selected = selected
@@ -1027,7 +1148,7 @@ private fun FeaturedLessonPanel(
             Spacer(Modifier.height(8.dp))
             CueTimelinePreview(previewCues, Modifier.weight(1f).fillMaxWidth())
             Spacer(Modifier.height(8.dp))
-            Text("Select to open", color = Muted, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+            Text("Select to open  •  Hold Select to download", color = Muted, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.CenterHorizontally))
         }
     }
@@ -1039,13 +1160,21 @@ private fun CompactLessonCard(
     modifier: Modifier,
     selected: Boolean,
     onFocused: () -> Unit,
-    onOpen: () -> Unit
+    onOpen: () -> Unit,
+    onLongClick: () -> Unit,
+    initialFocusRequester: FocusRequester?,
+    upFocusRequester: FocusRequester?
 ) {
     val previewItem = playlist.items.firstOrNull() ?: playlist.timeline().firstOrNull()?.item
     FocusedTvCard(
         onClick = onOpen,
-        modifier = modifier.height(116.dp).testTag("lesson-card-${playlist.id}"),
+        onLongClick = onLongClick,
+        modifier = modifier
+            .height(116.dp)
+            .focusProperties { upFocusRequester?.let { up = it } }
+            .testTag("lesson-card-${playlist.id}"),
         onFocused = onFocused,
+        initialFocusRequester = initialFocusRequester,
         selected = selected
     ) {
         Row(
@@ -1747,6 +1876,7 @@ internal fun LessonDetailScreen(
     screenName: String,
     connectionMode: ConnectionMode,
     onBack: () -> Unit,
+    onManualDownload: (LessonPlaylist) -> Unit = {},
     onPlay: (List<CueItem>, Int) -> Unit
 ) {
     val context = LocalContext.current
@@ -1790,6 +1920,10 @@ internal fun LessonDetailScreen(
                     maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 Text("Select a cue to start from that point.", color = Muted, fontSize = 15.sp)
             }
+            LessonCueButton(
+                onClick = { onManualDownload(playlist) },
+                modifier = Modifier.width(210.dp).height(48.dp)
+            ) { Text("⇩  Download lesson", fontSize = 15.sp, fontWeight = FontWeight.Bold) }
         }
         Spacer(Modifier.height(14.dp))
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
@@ -2560,17 +2694,33 @@ private fun ScreenManifest.itemCount() = allItems().size
 
 @Composable
 private fun FormLayout(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        Modifier.fillMaxSize().background(LessonCueTvColors.Background)
-            .padding(horizontal = 82.dp, vertical = 54.dp)
-    ) {
-        LessonCueWordmark()
-        Spacer(Modifier.height(30.dp))
-        TvPanel(Modifier.fillMaxWidth().weight(1f)) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 38.dp)) {
-                Text(title, fontSize = 40.sp, color = Cream, fontWeight = FontWeight.Bold)
-                Text(subtitle, fontSize = 19.sp, color = Muted, modifier = Modifier.padding(top = 9.dp, bottom = 30.dp))
-                content()
+    BoxWithConstraints(Modifier.fillMaxSize().background(LessonCueTvColors.Background)) {
+        val compact = maxWidth < 900.dp || maxHeight < 600.dp
+        val outerHorizontal = if (compact) 20.dp else 82.dp
+        val outerVertical = if (compact) 16.dp else 54.dp
+        val panelHorizontal = if (compact) 22.dp else 48.dp
+        val panelVertical = if (compact) 20.dp else 38.dp
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(horizontal = outerHorizontal, vertical = outerVertical)
+        ) {
+            LessonCueWordmark(compact = compact)
+            Spacer(Modifier.height(if (compact) 14.dp else 30.dp))
+            val panelModifier = if (compact) Modifier.fillMaxWidth() else Modifier.fillMaxWidth().weight(1f)
+            TvPanel(panelModifier) {
+                Column(
+                    (if (compact) Modifier.fillMaxWidth() else Modifier.fillMaxSize())
+                        .padding(horizontal = panelHorizontal, vertical = panelVertical)
+                ) {
+                    Text(title, fontSize = if (compact) 28.sp else 40.sp, color = Cream,
+                        fontWeight = FontWeight.Bold, maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Text(subtitle, fontSize = if (compact) 15.sp else 19.sp, color = Muted,
+                        maxLines = if (compact) 4 else 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 9.dp, bottom = if (compact) 20.dp else 30.dp))
+                    content()
+                }
             }
         }
     }
@@ -2599,6 +2749,92 @@ internal fun LessonCueButton(
         ),
         content = content
     )
+}
+
+@Composable
+private fun ManualDownloadOverlay(
+    state: ManualDownloadState,
+    onDownload: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val actionFocus = remember(state.playlist.id, state.started, state.completed) { FocusRequester() }
+    LaunchedEffect(state.playlist.id, state.started, state.completed) {
+        kotlinx.coroutines.delay(80)
+        runCatching { actionFocus.requestFocus() }
+    }
+    val total = state.items.size
+    val cached = state.cachedCount.coerceIn(0, total)
+    val remaining = (total - cached).coerceAtLeast(0)
+    Box(
+        Modifier.fillMaxSize()
+            .background(Color.Black.copy(alpha = .78f))
+            .zIndex(10_000f),
+        contentAlignment = Alignment.Center
+    ) {
+        BoxWithConstraints(Modifier.fillMaxWidth(.9f)) {
+            val compact = maxWidth < 760.dp
+            TvPanel(Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier.fillMaxWidth().padding(
+                        horizontal = if (compact) 22.dp else 38.dp,
+                        vertical = if (compact) 20.dp else 30.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)
+                ) {
+                    Text("Manually Download Lesson", color = Cream,
+                        fontSize = if (compact) 25.sp else 34.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Text(state.playlist.title, color = Gold,
+                        fontSize = if (compact) 18.sp else 22.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    when {
+                        state.error != null -> Text(state.error, color = Coral,
+                            fontSize = if (compact) 15.sp else 18.sp)
+                        state.completed -> Text("This lesson is downloaded and ready for local playback.", color = Mint,
+                            fontSize = if (compact) 15.sp else 18.sp)
+                        state.started -> Text("Downloading $cached of $total media files ($remaining remaining). Downloads are prioritized and continue in the background.",
+                            color = Cream, fontSize = if (compact) 15.sp else 18.sp)
+                        total == 0 -> Text("This lesson has no downloadable media. Streaming-only content will use the server when played.",
+                            color = Muted, fontSize = if (compact) 15.sp else 18.sp)
+                        else -> Text("Download all $total media files, including pre-roll, countdown, lesson, and post-roll, for local playback.",
+                            color = Cream, fontSize = if (compact) 15.sp else 18.sp)
+                    }
+                    if (state.started && !state.completed && total > 0) {
+                        Box(Modifier.fillMaxWidth().height(8.dp)
+                            .background(LessonCueTvColors.Border, RoundedCornerShape(50))) {
+                            Box(Modifier.fillMaxWidth(cached.toFloat() / total.toFloat()).height(8.dp)
+                                .background(Mint, RoundedCornerShape(50)))
+                        }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (!state.started && !state.completed && total > 0) {
+                            LessonCueButton(
+                                onClick = onDownload,
+                                modifier = Modifier.weight(1f).height(if (compact) 54.dp else 62.dp)
+                                    .focusRequester(actionFocus)
+                            ) { Text("Download lesson", fontSize = if (compact) 16.sp else 18.sp, fontWeight = FontWeight.Bold) }
+                        } else {
+                            LessonCueButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.weight(1f).height(if (compact) 54.dp else 62.dp)
+                                    .focusRequester(actionFocus)
+                            ) { Text(if (state.completed) "Done" else "Close", fontSize = if (compact) 16.sp else 18.sp, fontWeight = FontWeight.Bold) }
+                        }
+                        if (!state.completed) {
+                            LessonCueButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.weight(1f).height(if (compact) 54.dp else 62.dp)
+                            ) { Text("Cancel", fontSize = if (compact) 16.sp else 18.sp) }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -2648,6 +2884,72 @@ private fun LoadingScreen(onEnterAddress: (() -> Unit)? = null) {
     }
 }
 
+internal fun lessonMediaItems(playlist: LessonPlaylist): List<CueItem> =
+    playlist.timeline().map(TimelineCue::item).distinctBy { it.id }
+
+internal fun cacheableLessonItems(playlist: LessonPlaylist): List<CueItem> =
+    lessonMediaItems(playlist).filter {
+        it.offlineEligible && !isBundledDemoMedia(it.url) && !it.url.isNullOrBlank()
+    }
+
+private fun mediaCacheWorkName(item: CueItem): String =
+    "lessoncue-media-${item.id}-${item.sha256?.take(12) ?: "current"}"
+
+private fun mediaCacheInputData(identity: DeviceIdentity, item: CueItem, priority: String) = workDataOf(
+    "url" to item.url,
+    "fileName" to item.cacheFileName(),
+    "token" to identity.token,
+    "serverHost" to java.net.URL(identity.serverUrl).host,
+    "sha256" to item.sha256,
+    "sizeBytes" to (item.sizeBytes ?: 0L),
+    "priority" to priority,
+)
+
+private fun manualDownloadState(
+    context: android.content.Context,
+    identity: DeviceIdentity,
+    playlist: LessonPlaylist,
+): ManualDownloadState {
+    val items = cacheableLessonItems(playlist)
+    val directory = context.filesDir.resolve("media")
+    return ManualDownloadState(
+        identity = identity,
+        playlist = playlist,
+        items = items,
+        cachedCount = items.count { findUsableCacheFile(directory, it) != null },
+        completed = items.isEmpty(),
+    )
+}
+
+/** Enqueue the selected lesson ahead of background cache work. */
+private fun enqueuePriorityLessonDownload(
+    context: android.content.Context,
+    identity: DeviceIdentity,
+    playlist: LessonPlaylist,
+): List<CueItem> {
+    val manager = WorkManager.getInstance(context)
+    val constraints = Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.CONNECTED)
+        .build()
+    val items = cacheableLessonItems(playlist)
+    items.forEach { item ->
+        prepareCacheForDownload(context.filesDir.resolve("media"), item)
+        val workName = mediaCacheWorkName(item)
+        // Replace the normal background request with expedited work so this
+        // explicit user action gets the next available worker slot. The
+        // download itself is resumable, so replacing an existing request does
+        // not throw away an interrupted .part file.
+        manager.cancelUniqueWork(workName)
+        val request = OneTimeWorkRequestBuilder<MediaCacheWorker>()
+            .setInputData(mediaCacheInputData(identity, item, priority = "manual"))
+            .setConstraints(constraints)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+        manager.enqueueUniqueWork(workName, ExistingWorkPolicy.REPLACE, request)
+    }
+    return items
+}
+
 private fun scheduleMediaCaches(context: android.content.Context, identity: DeviceIdentity, manifest: ScreenManifest) {
     val manager = WorkManager.getInstance(context)
     val lessonMedia = manifest.playlists.flatMap { playlist ->
@@ -2665,12 +2967,11 @@ private fun scheduleMediaCaches(context: android.content.Context, identity: Devi
         .build()
     items.forEach { item ->
         prepareCacheForDownload(context.filesDir.resolve("media"), item)
-        val request = OneTimeWorkRequestBuilder<MediaCacheWorker>().setInputData(workDataOf(
-            "url" to item.url, "fileName" to item.cacheFileName(), "token" to identity.token,
-            "serverHost" to java.net.URL(identity.serverUrl).host, "sha256" to item.sha256,
-            "sizeBytes" to (item.sizeBytes ?: 0L)
-        )).setConstraints(constraints).build()
-        manager.enqueueUniqueWork("lessoncue-media-${item.id}-${item.sha256?.take(12) ?: "current"}",
+        val request = OneTimeWorkRequestBuilder<MediaCacheWorker>()
+            .setInputData(mediaCacheInputData(identity, item, priority = "background"))
+            .setConstraints(constraints)
+            .build()
+        manager.enqueueUniqueWork(mediaCacheWorkName(item),
             ExistingWorkPolicy.KEEP, request)
     }
 }

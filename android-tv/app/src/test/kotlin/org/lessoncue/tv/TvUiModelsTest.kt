@@ -38,6 +38,23 @@ class TvUiModelsTest {
     }
 
     @Test
+    fun manualLessonDownloadIncludesEveryPlaybackCue() {
+        val playlist = lesson().let { source ->
+            source.copy(
+                preRoll = source.preRoll?.let { it.copy(items = it.items.map { item -> item.copy(offlineEligible = true) }) },
+                countdown = source.countdown?.let { it.copy(item = it.item.copy(offlineEligible = true)) },
+                items = source.items.map { it.copy(offlineEligible = true) },
+                postLesson = source.postLesson?.let { it.copy(items = it.items.map { item -> item.copy(offlineEligible = true) }) }
+            )
+        }
+
+        assertEquals(
+            listOf("pre-roll", "countdown", "lesson-item", "post-lesson"),
+            cacheableLessonItems(playlist).map { it.id }
+        )
+    }
+
+    @Test
     fun initialCueFocusPrefersFirstRegularLessonCue() {
         assertEquals(2, lesson().initialCueIndex())
         assertEquals(1, lesson(regular = emptyList()).initialCueIndex())

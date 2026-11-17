@@ -108,6 +108,15 @@ class MediaDownloadTest {
         }
     }
 
+    @Test fun keepsNotReadyMediaRetryableForLaterTranscodeAttempts() {
+        assertTrue(isRetryableMediaHttpStatus(404))
+        assertTrue(isRetryableMediaHttpStatus(409))
+        assertTrue(isRetryableMediaHttpStatus(425))
+        assertTrue(isRetryableMediaHttpStatus(503))
+        assertFalse(isRetryableMediaHttpStatus(401))
+        assertFalse(isRetryableMediaHttpStatus(403))
+    }
+
     @Test fun incompleteRangeRemainsPartialAnd416AllowsFreshRetry() = withDestination { destination, partial ->
         partial.writeText("abc")
         assertThrows(IOException::class.java) {

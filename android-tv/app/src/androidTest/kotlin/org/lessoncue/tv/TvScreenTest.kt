@@ -65,6 +65,25 @@ class TvScreenTest {
     }
 
     @Test
+    fun featuredLessonMovesDownIntoTheLessonList() {
+        val manifest = ScreenManifest(
+            1,
+            "Room 204",
+            emptyList(),
+            listOf(lesson("next"), lesson("later"))
+        )
+
+        compose.setContent {
+            LibraryScreen(manifest, identity, ConnectionMode.Online, onStart = {}, onCheckForUpdates = null)
+        }
+
+        compose.onNodeWithTag("lesson-card-next")
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onNodeWithTag("lesson-card-later").assertIsFocused()
+    }
+
+    @Test
     fun landingPageUsesTheNewHomeSectionsAndFourCuePreview() {
         val manifest = ScreenManifest(
             1,

@@ -4,6 +4,32 @@ This is the release history for LessonCue. Each release publishes both user and
 developer notes on GitHub; the app shows only the user changes before an
 administrator installs an update.
 
+## v0.46.46 — Reliable TV downloads and review navigation
+
+### User changes
+
+- Long-press a lesson and choose “Manually Download Lesson” to prioritize the
+  complete lesson locally, including pre-roll, countdown, lesson, and post-roll
+  media.
+- TV downloads now retry when a rendition is temporarily unavailable while the
+  server finishes processing it, and later manifest refreshes pick it up again.
+- Fire TV and Android TV connection screens adapt to compact displays, and the
+  featured lesson now has an explicit D-pad path down into the lesson list.
+
+### Developer changes
+
+- Manual lesson downloads use expedited, resumable WorkManager requests and
+  replace lower-priority background work for the selected lesson.
+- Added regression coverage for complete lesson download planning, transient
+  media HTTP responses, and featured-card D-pad navigation.
+- Amazon Appstore testing: enter `http://lsnq.demo`, choose **Find server**, enter
+  `123456`, choose **Open demo**, then select **Sample lesson** and use the D-pad
+  to navigate the cue list and play the bundled sample video. This review path
+  is local to the APK and does not require a network connection or a paired
+  device.
+- Release server/web version 0.46.46 and Android TV/Fire TV version 0.46.18
+  (version code 158).
+
 ## v0.46.45 — Troubleshooting and streaming-state reliability
 
 ### User changes

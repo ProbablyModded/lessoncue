@@ -4,7 +4,7 @@ import { WeatherConditionArtwork, WeatherDropArtwork, WeatherWindArtwork } from 
 import { ActivityDisplay } from "./activities/ActivityDisplay";
 import "./signage-studio.css";
 
-const APP_VERSION = "0.46.45";
+const APP_VERSION = "0.46.46";
 /** Shared with public/sw.js, which answers media requests from it. */
 const MEDIA_CACHE = "lessoncue-media-v1";
 

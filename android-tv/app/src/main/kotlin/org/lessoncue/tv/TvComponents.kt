@@ -1,5 +1,6 @@
 package org.lessoncue.tv
 
+import android.view.KeyEvent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -32,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -49,6 +51,9 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
@@ -164,10 +169,14 @@ internal fun FocusedTvCard(
     modifier: Modifier = Modifier,
     onFocused: (() -> Unit)? = null,
     initialFocusRequester: FocusRequester? = null,
+    onLongClick: (() -> Unit)? = null,
     selected: Boolean = false,
     content: @Composable RowScope.() -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    var longPressTriggered by remember { mutableStateOf(false) }
+    var longPressJob by remember { mutableStateOf<Job?>(null) }
+    val longPressScope = rememberCoroutineScope()
     val scale by animateFloatAsState(if (focused) 1.025f else 1f, label = "tv-card-focus")
     val shape = RoundedCornerShape(LessonCueTvDimens.CardRadius)
     Button(
@@ -195,6 +204,44 @@ internal fun FocusedTvCard(
                 focused = it.isFocused
                 if (it.isFocused) onFocused?.invoke()
             }
+            .then(if (onLongClick == null) Modifier else Modifier.onPreviewKeyEvent { event ->
+                val native = event.nativeKeyEvent
+                if (native.keyCode !in setOf(
+                        KeyEvent.KEYCODE_DPAD_CENTER,
+                        KeyEvent.KEYCODE_ENTER,
+                        KeyEvent.KEYCODE_NUMPAD_ENTER
+                    )) return@onPreviewKeyEvent false
+                when (native.action) {
+                    KeyEvent.ACTION_DOWN -> {
+                        if (native.repeatCount > 0) {
+                            if (!longPressTriggered) {
+                                longPressTriggered = true
+                                longPressJob?.cancel()
+                                onLongClick()
+                            }
+                            true
+                        } else {
+                            longPressTriggered = false
+                            longPressJob?.cancel()
+                            longPressJob = longPressScope.launch {
+                                delay(650)
+                                if (!longPressTriggered) {
+                                    longPressTriggered = true
+                                    onLongClick()
+                                }
+                            }
+                            false
+                        }
+                    }
+                    KeyEvent.ACTION_UP -> {
+                        longPressJob?.cancel()
+                        val consumed = longPressTriggered
+                        longPressTriggered = false
+                        consumed
+                    }
+                    else -> false
+                }
+            })
             .then(initialFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
     ) { content() }
 }

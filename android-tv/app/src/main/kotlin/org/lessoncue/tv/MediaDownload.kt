@@ -11,6 +11,10 @@ import java.security.MessageDigest
 
 internal class PermanentMediaDownloadException(message: String) : IOException(message)
 
+/** A manifest can briefly point at a rendition while the server is finishing it. */
+internal fun isRetryableMediaHttpStatus(status: Int): Boolean =
+    status == 404 || status == 408 || status == 409 || status == 425 || status == 429 || status >= 500
+
 /** Publish a cache file only after the response, byte count and checksum agree. */
 internal fun downloadMedia(
     connection: HttpURLConnection,
@@ -45,7 +49,7 @@ internal fun downloadMedia(
             discardPartial(partial, partialTag)
             throw IOException("Cached media range is unavailable; retrying a full download")
         }
-        if (status in 400..499 && status != 408 && status != 416 && status != 429)
+        if (status in 400..499 && !isRetryableMediaHttpStatus(status) && status != 416)
             throw PermanentMediaDownloadException("Media download returned HTTP $status")
         if (status != 200 && status != 206) throw IOException("Media download returned HTTP $status")
         val responseTag = connection.getHeaderField("ETag")?.trim()?.takeIf { it.isNotEmpty() }
