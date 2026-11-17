@@ -244,14 +244,7 @@ public sealed record TroubleshootingReport(
     IReadOnlyList<TroubleshootingIssue> Issues)
 {
     public int MediaAttentionCount => Media.Count(item =>
-        !string.Equals(item.ProcessingStatus, "ready", StringComparison.OrdinalIgnoreCase) ||
-        !string.IsNullOrWhiteSpace(item.ProcessingError) ||
-        string.Equals(item.CompatibilityStatus, "failed", StringComparison.OrdinalIgnoreCase) ||
-        !string.IsNullOrWhiteSpace(item.CompatibilityError) ||
-        item.OriginalFile?.SizeAndSha256Match == false ||
-        item.CompatibilityFile?.SizeAndSha256Match == false ||
-        MediaFormatCatalog.IsVideo(Path.GetExtension(item.RelativePath), item.ContentType) &&
-        item.Transcodes.Any(variant => string.Equals(variant.Status, "failed", StringComparison.OrdinalIgnoreCase)));
+        TroubleshootingIssueBuilder.HasActionableMediaAttention(item));
 
     public int ScreenAttentionCount => Screens.Count(item =>
         TroubleshootingIssueBuilder.HasFreshScreenDiagnostics(item, DateTimeOffset.UtcNow) &&
@@ -347,7 +340,8 @@ public static class TroubleshootingIssueBuilder
         IReadOnlyList<string> diagnosticErrors)
     {
         var drafts = new List<Draft>();
-        foreach (var entry in runtime.Where(item => item.IsFailure))
+        foreach (var entry in runtime.Where(item => item.IsFailure &&
+                     !MediaStreamingDiagnostics.IsExpectedKestrelDisconnect(item)))
         {
             var definition = string.IsNullOrWhiteSpace(entry.ErrorCode)
                 ? TroubleshootingErrorCatalog.ForRuntime(entry.Category, entry.Event, entry.Message)
@@ -437,7 +431,7 @@ public static class TroubleshootingIssueBuilder
                 "Use the stored ProcessingError and original-file checks to distinguish corrupt media from a worker/runtime failure, then retry only if recoverable.",
                 $"ProcessingStatus={asset.ProcessingStatus}; ProcessingError={asset.ProcessingError}; SourceKind={asset.SourceKind}", asset.CreatedAt);
         }
-        else if (!string.IsNullOrWhiteSpace(asset.ProcessingError))
+        else if (!string.IsNullOrWhiteSpace(asset.ProcessingError) && !IsExpectedMediaNotice(asset))
         {
             Add(drafts, "LC.MEDIA.PROCESSING.DEFERRED", "warning", "Media", label,
                 "Media processing has a recorded error even though the asset may remain playable from its original.",
@@ -452,15 +446,16 @@ public static class TroubleshootingIssueBuilder
                 $"ProcessingStatus={asset.ProcessingStatus}; CreatedAt={asset.CreatedAt:O}", asset.CreatedAt);
         }
 
-        if (string.Equals(asset.CompatibilityStatus, "failed", StringComparison.OrdinalIgnoreCase) ||
-            !string.IsNullOrWhiteSpace(asset.CompatibilityError))
+        if (!IsStreamingOnlyAsset(asset) &&
+            (string.Equals(asset.CompatibilityStatus, "failed", StringComparison.OrdinalIgnoreCase) ||
+             !string.IsNullOrWhiteSpace(asset.CompatibilityError)))
         {
             Add(drafts, "LC.MEDIA.COMPATIBILITY.FAILED", "error", "Media", label,
                 "Compatibility processing is marked failed or has a recorded conversion error.",
                 "Confirm the original is still playable, inspect converter/runtime diagnostics, and use the retry action for infrastructure failures.",
                 $"CompatibilityStatus={asset.CompatibilityStatus}; CompatibilityError={asset.CompatibilityError}; CompatibilityPath={asset.CompatibilityPath}", asset.CreatedAt);
         }
-        else if (asset.CompatibilityStatus is "pending" or "converting")
+        else if ((asset.CompatibilityStatus is "pending" or "converting") && !IsStreamingOnlyAsset(asset))
         {
             Add(drafts, "LC.MEDIA.COMPATIBILITY.NOT_READY", "warning", "Media", label,
                 "Optional compatibility processing has not completed.",
@@ -488,6 +483,43 @@ public static class TroubleshootingIssueBuilder
                 variant.QueuedAt);
         }
     }
+
+    internal static bool HasActionableMediaAttention(MediaDiagnosticSnapshot asset) =>
+        !IsExpectedMediaNotice(asset) &&
+        (!string.Equals(asset.ProcessingStatus, "ready", StringComparison.OrdinalIgnoreCase) ||
+         !string.IsNullOrWhiteSpace(asset.ProcessingError) ||
+         !IsStreamingOnlyAsset(asset) &&
+         (string.Equals(asset.CompatibilityStatus, "failed", StringComparison.OrdinalIgnoreCase) ||
+          !string.IsNullOrWhiteSpace(asset.CompatibilityError)) ||
+         asset.OriginalFile?.SizeAndSha256Match == false ||
+         asset.CompatibilityFile?.SizeAndSha256Match == false ||
+         MediaFormatCatalog.IsVideo(Path.GetExtension(asset.RelativePath), asset.ContentType) &&
+         asset.Transcodes.Any(variant => string.Equals(variant.Status, "failed", StringComparison.OrdinalIgnoreCase)));
+
+    private static bool IsExpectedMediaNotice(MediaDiagnosticSnapshot asset) =>
+        IsDocumentConversionNotice(asset) || IsYouTubeStreamingFallback(asset);
+
+    private static bool IsDocumentConversionNotice(MediaDiagnosticSnapshot asset) =>
+        string.Equals(asset.ProcessingStatus, "ready", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(asset.CompatibilityStatus, "not-needed", StringComparison.OrdinalIgnoreCase) &&
+        !asset.OfflineEligible &&
+        MediaFormatCatalog.IsConvertibleDocument(Path.GetExtension(asset.RelativePath)) &&
+        string.Equals(asset.ProcessingError,
+            "Use Convert to slides in the Media Library to make this document screen-ready.",
+            StringComparison.Ordinal);
+
+    private static bool IsYouTubeStreamingFallback(MediaDiagnosticSnapshot asset) =>
+        string.Equals(asset.SourceKind, "youtube-download", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(asset.ProcessingStatus, "ready", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(asset.CompatibilityStatus, "not-needed", StringComparison.OrdinalIgnoreCase) &&
+        !asset.OfflineEligible &&
+        string.IsNullOrWhiteSpace(asset.RelativePath) &&
+        asset.ProcessingError?.Contains("original YouTube link remains available for streaming",
+            StringComparison.OrdinalIgnoreCase) == true;
+
+    private static bool IsStreamingOnlyAsset(MediaDiagnosticSnapshot asset) =>
+        string.Equals(asset.SourceKind, "link", StringComparison.OrdinalIgnoreCase) ||
+        IsYouTubeStreamingFallback(asset);
 
     internal static bool HasFreshScreenDiagnostics(
         TroubleshootingScreenDiagnostic screen, DateTimeOffset now) =>

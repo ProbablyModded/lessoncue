@@ -46,7 +46,11 @@ public sealed class TroubleshootingLog : ILoggerProvider
         if (failuresOnly)
         {
             lock (fileLock) PruneFailuresNoLock(DateTimeOffset.UtcNow);
-            return failures.OrderByDescending(entry => entry.Timestamp).Take(safeLimit).ToArray();
+            return failures
+                .Where(entry => !MediaStreamingDiagnostics.IsExpectedKestrelDisconnect(entry))
+                .OrderByDescending(entry => entry.Timestamp)
+                .Take(safeLimit)
+                .ToArray();
         }
         return entries.Reverse().Take(safeLimit).ToArray();
     }
@@ -55,6 +59,12 @@ public sealed class TroubleshootingLog : ILoggerProvider
 
     internal void Write(LogLevel level, string category, EventId eventId, string message, Exception? exception)
     {
+        // Kestrel may log a timed-out response flush after the media endpoint
+        // has completed. The client/proxy has abandoned a large stream; this
+        // is not a LessonCue application failure and should not enter the
+        // seven-day failure store.
+        if (MediaStreamingDiagnostics.IsExpectedKestrelDisconnect(category, message, exception))
+            return;
         if (level < LogLevel.Information || category.StartsWith("Microsoft.", StringComparison.Ordinal) && level < LogLevel.Warning)
             return;
         if (level == LogLevel.Information && IsRoutineHttpInformation(category, message))
@@ -112,10 +122,11 @@ public sealed class TroubleshootingLog : ILoggerProvider
 
             var loadedFailures = ReadEntries(failureFilePath)
                 .Select(Normalize)
-                .Where(entry => entry.IsFailure)
+                .Where(entry => entry.IsFailure && !MediaStreamingDiagnostics.IsExpectedKestrelDisconnect(entry))
                 .ToArray();
             var failureEntries = loadedFailures
-                .Concat(recent.Select(Normalize).Where(entry => entry.IsFailure))
+                .Concat(recent.Select(Normalize)
+                    .Where(entry => entry.IsFailure && !MediaStreamingDiagnostics.IsExpectedKestrelDisconnect(entry)))
                 .GroupBy(FailureKey, StringComparer.Ordinal)
                 .Select(group => group.First())
                 .OrderBy(entry => entry.Timestamp);

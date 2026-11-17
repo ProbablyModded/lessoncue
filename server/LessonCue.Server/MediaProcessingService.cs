@@ -56,7 +56,24 @@ public sealed class MediaProcessingService(IServiceScopeFactory scopes, MediaSto
             item.ProcessingError = null;
             item.CompatibilityError = null;
         }
-        if (interrupted.Count > 0) await db.SaveChangesAsync(ct);
+
+        // A streaming-only link never has a local file or a compatibility
+        // derivative. Older releases could leave its compatibility state at
+        // pending after a restart, which made the troubleshooting report look
+        // like a stuck conversion even though the link was usable.
+        var streamingLinks = await db.MediaAssets
+            .Where(x => x.SourceKind == "link" &&
+                (x.CompatibilityStatus != "not-needed" || x.OfflineEligible))
+            .ToListAsync(ct);
+        foreach (var item in streamingLinks)
+        {
+            item.CompatibilityStatus = "not-needed";
+            item.CompatibilityError = null;
+            item.OfflineEligible = false;
+        }
+
+        if (interrupted.Count > 0 || streamingLinks.Count > 0)
+            await db.SaveChangesAsync(ct);
     }
 
     private async Task ProcessAsync(MediaAsset item, LessonCueDb db, CancellationToken ct)

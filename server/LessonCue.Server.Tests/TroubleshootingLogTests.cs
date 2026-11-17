@@ -1,5 +1,6 @@
 using LessonCue.Server;
 using Microsoft.Extensions.Logging;
+using System.Net.Sockets;
 using System.Text.Json;
 using Xunit;
 
@@ -132,6 +133,26 @@ public sealed class TroubleshootingLogTests
             var entry = Assert.Single(log.GetRecent(10, failuresOnly: true));
             Assert.Equal("LC.MEDIA.WORKER.BWRAP_PROC_MOUNT", entry.ErrorCode);
             Assert.Contains("host sandbox-permission", entry.ErrorDescription, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void Does_not_store_expected_kestrel_media_disconnects_as_failures()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"lessoncue-troubleshooting-kestrel-{Guid.NewGuid():N}");
+        try
+        {
+            using var log = new TroubleshootingLog(root);
+            log.CreateLogger("Microsoft.AspNetCore.Server.Kestrel").LogError(
+                new SocketException((int)SocketError.TimedOut),
+                "Unexpected exception in TimingPipeFlusher.FlushAsync.");
+
+            Assert.Empty(log.GetRecent(10, failuresOnly: true));
+            Assert.Empty(log.GetRecent(10));
         }
         finally
         {

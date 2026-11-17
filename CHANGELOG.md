@@ -4,6 +4,27 @@ This is the release history for LessonCue. Each release publishes both user and
 developer notes on GitHub; the app shows only the user changes before an
 administrator installs an update.
 
+## v0.46.45 — Troubleshooting and streaming-state reliability
+
+### User changes
+
+- Failure reports no longer treat a document waiting for the explicit “Convert
+  to slides” action or a YouTube item using its streaming fallback as a broken
+  media asset.
+- Streaming-only links are repaired on server startup so they cannot remain in
+  an impossible compatibility-conversion state.
+- Expected client/proxy disconnects while Kestrel flushes a media response no
+  longer appear as server failures.
+
+### Developer changes
+
+- Added regression coverage for Kestrel response-pipe timeouts, streaming
+  fallback classification, document conversion notices, and streaming links.
+- Existing retained Kestrel transport entries are excluded from the failure
+  store when diagnostics reload.
+- Release server/web version 0.46.45. Android TV/Fire TV remains at version
+  0.46.17 (version code 157).
+
 ## v0.46.44 — Troubleshooting report accuracy
 
 ### User changes

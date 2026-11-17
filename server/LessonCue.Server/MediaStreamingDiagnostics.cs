@@ -34,6 +34,29 @@ internal static class MediaStreamingDiagnostics
         if (!IsMediaResponsePath(context.Request.Path.Value ?? "")) return false;
         if (context.RequestAborted.IsCancellationRequested) return true;
 
+        return HasDownstreamTransportError(error);
+    }
+
+    /// <summary>
+    /// Kestrel can report a response-body disconnect from its own
+    /// TimingPipeFlusher after the endpoint pipeline has already returned.
+    /// There is no HttpContext available at that logging boundary, so use the
+    /// Kestrel output-pipeline marker plus a transport exception to distinguish
+    /// an abandoned media stream from an application failure.
+    /// </summary>
+    public static bool IsExpectedKestrelDisconnect(
+        string category, string message, Exception? error) =>
+        category.Equals("Microsoft.AspNetCore.Server.Kestrel", StringComparison.Ordinal) &&
+        IsKestrelOutputPipelineMessage(message, error) &&
+        error is not null && HasDownstreamTransportError(error);
+
+    public static bool IsExpectedKestrelDisconnect(TroubleshootingLogEntry entry) =>
+        entry.Category.Equals("Microsoft.AspNetCore.Server.Kestrel", StringComparison.Ordinal) &&
+        IsKestrelOutputPipelineMessage(entry.Message, entry.Details) &&
+        IsRecordedTransportError(entry);
+
+    private static bool HasDownstreamTransportError(Exception error)
+    {
         for (var current = error; current is not null; current = current.InnerException)
         {
             if (current is SocketException socket && DownstreamSocketErrors.Contains(socket.SocketErrorCode))
@@ -43,6 +66,24 @@ internal static class MediaStreamingDiagnostics
         }
 
         return false;
+    }
+
+    private static bool IsRecordedTransportError(TroubleshootingLogEntry entry) =>
+        entry.ExceptionType == typeof(SocketException).FullName &&
+        IsTransportMessage(entry.Exception) ||
+        IsTransportMessage(entry.Exception) ||
+        IsTransportMessage(entry.Details);
+
+    private static bool IsKestrelOutputPipelineMessage(string message, Exception? error) =>
+        IsKestrelOutputPipelineMessage(message, error?.ToString());
+
+    private static bool IsKestrelOutputPipelineMessage(string message, string? details)
+    {
+        var text = $"{message}\n{details}";
+        return text.Contains("TimingPipeFlusher", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("PipeWriter", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("OutputProducer", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("SendFile", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsTransportMessage(string? message) =>

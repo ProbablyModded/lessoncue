@@ -49,6 +49,62 @@ public sealed class TroubleshootingReportTests
     }
 
     [Fact]
+    public void Intentional_document_conversion_notice_is_not_reported_as_a_failure()
+    {
+        var asset = Snapshot(
+            fileName: "lesson.pptx",
+            relativePath: "lesson.pptx",
+            contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            processingStatus: "ready",
+            processingError: "Use Convert to slides in the Media Library to make this document screen-ready.",
+            compatibilityStatus: "not-needed",
+            offlineEligible: false,
+            sourceKind: "upload");
+
+        var issues = TroubleshootingIssueBuilder.Build([], [], [asset], [], []);
+
+        Assert.Empty(issues);
+        Assert.False(TroubleshootingIssueBuilder.HasActionableMediaAttention(asset));
+    }
+
+    [Fact]
+    public void YouTube_streaming_fallback_is_not_reported_as_a_failed_import()
+    {
+        var asset = Snapshot(
+            fileName: "YouTube video",
+            relativePath: "",
+            contentType: "video/mp4",
+            processingStatus: "ready",
+            processingError: "Offline download is unavailable; the original YouTube link remains available for streaming. Fatal process out of memory.",
+            compatibilityStatus: "not-needed",
+            offlineEligible: false,
+            sourceKind: "youtube-download");
+
+        var issues = TroubleshootingIssueBuilder.Build([], [], [asset], [], []);
+
+        Assert.Empty(issues);
+        Assert.False(TroubleshootingIssueBuilder.HasActionableMediaAttention(asset));
+    }
+
+    [Fact]
+    public void Streaming_only_links_do_not_report_pending_compatibility_work()
+    {
+        var asset = Snapshot(
+            fileName: "www.youtube.com",
+            relativePath: "",
+            contentType: "text/html",
+            processingStatus: "ready",
+            processingError: null,
+            compatibilityStatus: "pending",
+            offlineEligible: false,
+            sourceKind: "link");
+
+        var issues = TroubleshootingIssueBuilder.Build([], [], [asset], [], []);
+
+        Assert.Empty(issues);
+    }
+
+    [Fact]
     public void SuccessfulAuditWithFailureWordIsNotReportedAsAnIssue()
     {
         var audit = new AuditEvent
@@ -144,4 +200,22 @@ public sealed class TroubleshootingReportTests
         Assert.Equal("https://lessoncue.net/report.log",
             TroubleshootingReportPullService.EndpointUrl(organization));
     }
+
+    private static MediaDiagnosticSnapshot Snapshot(
+        string fileName,
+        string relativePath,
+        string contentType,
+        string processingStatus,
+        string? processingError,
+        string compatibilityStatus,
+        bool offlineEligible,
+        string sourceKind) =>
+        new(
+            Guid.NewGuid(), fileName, relativePath, contentType, 1234, "expected", DateTimeOffset.UtcNow,
+            processingStatus, processingError, compatibilityStatus, null, null, null, null,
+            null, null, null, null, offlineEligible, 1, "lesson", sourceKind,
+            relativePath.Length == 0
+                ? null
+                : new MediaFileDiagnostic(relativePath, true, 1234, "expected", true, "expected", true, null),
+            null, []);
 }

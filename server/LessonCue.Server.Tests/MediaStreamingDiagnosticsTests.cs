@@ -37,4 +37,22 @@ public sealed class MediaStreamingDiagnosticsTests
         Assert.False(MediaStreamingDiagnostics.IsDownstreamDisconnect(
             context, new SocketException((int)SocketError.TimedOut)));
     }
+
+    [Fact]
+    public void Recognizes_kestrel_timing_pipe_timeout_as_an_expected_disconnect()
+    {
+        Assert.True(MediaStreamingDiagnostics.IsExpectedKestrelDisconnect(
+            "Microsoft.AspNetCore.Server.Kestrel",
+            "Unexpected exception in TimingPipeFlusher.FlushAsync.",
+            new SocketException((int)SocketError.TimedOut)));
+    }
+
+    [Fact]
+    public void Does_not_suppress_a_kestrel_timeout_without_output_pipeline_evidence()
+    {
+        Assert.False(MediaStreamingDiagnostics.IsExpectedKestrelDisconnect(
+            "Microsoft.AspNetCore.Server.Kestrel",
+            "Unexpected exception while accepting a connection.",
+            new SocketException((int)SocketError.TimedOut)));
+    }
 }
