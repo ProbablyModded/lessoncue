@@ -14,7 +14,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 
-private object MediaCacheLocks {
+internal object MediaCacheLocks {
     private val locks = ConcurrentHashMap<String, Mutex>()
 
     suspend fun <T> withLock(destination: java.io.File, block: () -> T): T {

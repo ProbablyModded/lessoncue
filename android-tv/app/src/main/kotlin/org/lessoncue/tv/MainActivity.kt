@@ -129,6 +129,8 @@ import com.google.zxing.MultiFormatWriter
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
@@ -193,6 +195,7 @@ fun LessonCueApp() {
     var playbackControl by remember { mutableStateOf<ControlCommand?>(null) }
     var acknowledgedControlVersion by remember { mutableStateOf(0) }
     var playbackTelemetry by remember { mutableStateOf(PlaybackTelemetry()) }
+    val latestPlayingItemId by rememberUpdatedState(playbackTelemetry.itemId)
     var playbackCommandError by remember { mutableStateOf<String?>(null) }
     var totalManifestItems by remember { mutableStateOf(0) }
     var diagnosticCaptureVisible by remember { mutableStateOf(false) }
@@ -399,7 +402,7 @@ fun LessonCueApp() {
                 connectionMode = ConnectionMode.Online
                 activeManifestVersion = latest.version
                 totalManifestItems = latest.itemCount()
-                scheduleMediaCaches(context, identity, latest)
+                scheduleMediaCaches(context, identity, latest, setOfNotNull(latestPlayingItemId))
                 val emergency = latest.signage.any { it.mode == "emergency" }
                 val current = screen
                 when {
@@ -481,7 +484,9 @@ fun LessonCueApp() {
                 }
                 is AppScreen.Library -> {
                     LaunchedEffect(current.manifest.version) { playbackTelemetry = PlaybackTelemetry() }
-                    LaunchedEffect(current.manifest.version) { scheduleMediaCaches(context, current.identity, current.manifest) }
+                    LaunchedEffect(current.manifest.version) {
+                        scheduleMediaCaches(context, current.identity, current.manifest, setOfNotNull(latestPlayingItemId))
+                    }
                     LaunchedEffect(current.manifest.version, current.manifest.playlists.size) {
                         if (current.manifest.signage.any { it.mode == "emergency" }) return@LaunchedEffect
                         while (true) {
@@ -2971,8 +2976,37 @@ private fun enqueuePriorityLessonDownload(
     return items
 }
 
-private fun scheduleMediaCaches(context: android.content.Context, identity: DeviceIdentity, manifest: ScreenManifest) {
+private suspend fun scheduleMediaCaches(
+    context: android.content.Context,
+    identity: DeviceIdentity,
+    manifest: ScreenManifest,
+    protectedItemIds: Set<String> = emptySet(),
+) {
     val manager = WorkManager.getInstance(context)
+    val directory = context.filesDir.resolve("media")
+    val today = LocalDate.now(ZoneId.systemDefault())
+    val priority = mediaCachePriority(manifest.playlists, today, ZoneId.systemDefault())
+    val currentItems = distinctMediaCacheItems(priority.currentDay)
+    val currentItemIds = currentItems.mapTo(mutableSetOf()) { it.id }
+    val priorityIncomplete = currentItems.isNotEmpty() &&
+        currentItems.any { findUsableCacheFile(directory, it) == null }
+    val requiredBytes = estimateMissingMediaBytes(directory, currentItems)
+    val protectedIds = currentItemIds.toSet() + protectedItemIds
+    val olderCandidates = olderMediaCacheItems(priority, protectedIds)
+    val evictions = if (priorityIncomplete) {
+        selectOlderMediaCacheItemsToEvict(directory, olderCandidates, directory.usableSpace, requiredBytes)
+    } else {
+        emptyList()
+    }
+    evictions.forEach { candidate ->
+        manager.cancelUniqueWork(mediaCacheWorkName(candidate.item))
+        // Wait for a worker using this item to release its file before deleting
+        // its final or resumable copies.
+        MediaCacheLocks.withLock(directory.resolve(candidate.item.cacheFileName())) {
+            deleteMediaCacheCopies(directory, candidate.item)
+        }
+    }
+
     val lessonMedia = manifest.playlists.flatMap { playlist ->
         playlist.items + playlist.preRoll?.items.orEmpty() + listOfNotNull(playlist.countdown?.item) + playlist.postLesson?.items.orEmpty()
     }
@@ -2983,14 +3017,32 @@ private fun scheduleMediaCaches(context: android.content.Context, identity: Devi
     }
     val items = (lessonMedia + signageMedia)
         .distinctBy { it.id }.filter { it.offlineEligible && it.url != null }
+    val backgroundItems = items.filterNot { it.id in currentItemIds }
+    // Do not let historical or future lessons compete with today's lesson.
+    // Once the priority set is complete, the next refresh resumes normal
+    // background caching without needing a separate state store.
+    if (priorityIncomplete) {
+        backgroundItems.forEach { manager.cancelUniqueWork(mediaCacheWorkName(it)) }
+    }
+    val scheduledItems = if (priorityIncomplete) currentItems else currentItems + backgroundItems
     val constraints = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
         .build()
-    items.forEach { item ->
-        prepareCacheForDownload(context.filesDir.resolve("media"), item)
+    scheduledItems.distinctBy { it.id }.forEach { item ->
+        prepareCacheForDownload(directory, item)
+        val priorityDownload = item.id in currentItemIds
         val request = OneTimeWorkRequestBuilder<MediaCacheWorker>()
-            .setInputData(mediaCacheInputData(identity, item, priority = "background"))
+            .setInputData(mediaCacheInputData(
+                identity,
+                item,
+                priority = if (priorityDownload) "current-day" else "background"
+            ))
             .setConstraints(constraints)
+            .apply {
+                if (priorityDownload) {
+                    setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                }
+            }
             .build()
         manager.enqueueUniqueWork(mediaCacheWorkName(item),
             ExistingWorkPolicy.KEEP, request)

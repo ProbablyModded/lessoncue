@@ -4,6 +4,23 @@ This is the release history for LessonCue. Each release publishes both user and
 developer notes on GitHub; the app shows only the user changes before an
 administrator installs an update.
 
+## v0.46.48 — Storage-aware TV lesson caching
+
+### User changes
+
+- The TV cache now gives today's dated lesson first claim on storage and pauses
+  background lesson downloads until that lesson is ready.
+- When space is needed, the TV removes the oldest cached lesson media first;
+  the current-day lesson and the item currently playing are protected.
+
+### Developer changes
+
+- Added date-aware cache planning, resumable-file eviction, and regression
+  coverage for priority storage decisions.
+
+- Release server/web version 0.46.48 and Android TV/Fire TV version 0.46.20
+  (version code 160).
+
 ## v0.46.47 — Store policy and TV capability cleanup
 
 ### User changes
