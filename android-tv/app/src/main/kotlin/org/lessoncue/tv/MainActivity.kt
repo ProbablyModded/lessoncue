@@ -681,6 +681,8 @@ private fun ConnectScreen(message: String?, onConnect: (String, String) -> Unit)
         "Connect this TV",
         "LessonCue TV uses server pairing, not a username and password. Enter a reachable LessonCue server address, then use its six-digit pairing PIN."
     ) {
+        PrivacyPolicyNotice()
+        Spacer(Modifier.height(20.dp))
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val compact = maxWidth < 760.dp
             val fieldModifier = Modifier.fillMaxWidth()
@@ -900,6 +902,8 @@ internal fun DemoPasswordScreen(
         "LessonCue demo",
         "Enter the review password to open the bundled sample content. This path does not connect to a server."
     ) {
+        PrivacyPolicyNotice()
+        Spacer(Modifier.height(20.dp))
         TvTextField(
             value = password,
             onValueChange = { password = it.filter(Char::isDigit).take(DEMO_PASSWORD.length) },
@@ -934,6 +938,23 @@ internal fun DemoPasswordScreen(
                 Text("Back")
             }
         }
+    }
+}
+
+@Composable
+private fun PrivacyPolicyNotice() {
+    Column(
+        Modifier.fillMaxWidth().testTag("privacy-policy-notice"),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Text("Privacy policy", color = Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(
+            LESSONCUE_PRIVACY_POLICY_URL,
+            color = Mint,
+            fontSize = 13.sp,
+            maxLines = 3,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Clip
+        )
     }
 }
 

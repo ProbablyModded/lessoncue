@@ -1,6 +1,6 @@
 Privacy Policy for LessonCue
-Last updated: July 25, 2026
-LessonCue ("we," "us," or "our") provides a self-hosted lesson scheduling and media playback system for schools, churches, training programs, and similar organizations. This Privacy Policy explains how LessonCue handles information when you use the LessonCue server, web administration interface, TV applications, browser player, and related features.
+Last updated: November 22, 2026
+LessonCue is developed by Vellumind Labs. LessonCue ("we," "us," or "our") provides a self-hosted lesson scheduling and media playback system for schools, churches, training programs, and similar organizations. This Privacy Policy explains how LessonCue handles information when you use the LessonCue server, web administration interface, TV applications, browser player, and related features.
 1. Scope
 This Privacy Policy applies to:
 the LessonCue server software
@@ -122,6 +122,6 @@ request deletion
 object to certain processing
 request data portability, where applicable
 Because LessonCue is generally self-hosted, requests relating to data within a particular installation should usually be directed to the organization operating that installation.
-You may also contact us at the address below for questions about this Privacy Policy.
+You may contact us about this Privacy Policy through the LessonCue support issue tracker at https://github.com/ProbablyModded/lessoncue/issues. Please do not post private or sensitive personal information in a public issue.
 14. Changes to This Privacy Policy
 We may update this Privacy Policy from time to time. When we do, we will update the "Last updated" date above. Continued use of LessonCue after a revised Privacy Policy becomes effective means you accept the updated policy.

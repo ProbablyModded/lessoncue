@@ -1,10 +1,8 @@
 package org.lessoncue.tv
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
-import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -16,25 +14,16 @@ import kotlin.coroutines.resume
 internal class LessonCueDiscovery(context: Context) {
     private val appContext = context.applicationContext
     private val nsdManager = appContext.getSystemService(Context.NSD_SERVICE) as NsdManager
-    private val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
 
     suspend fun findServers(timeoutMillis: Long = 6_000): List<String> =
         withTimeoutOrNull(timeoutMillis) { browse() }.orEmpty()
 
     suspend fun findServer(timeoutMillis: Long = 6_000): String? = findServers(timeoutMillis).firstOrNull()
 
-    @SuppressLint("ServiceCast")
-    @Suppress("DEPRECATION")
     private suspend fun browse(): List<String> = suspendCancellableCoroutine { continuation ->
         val completed = AtomicBoolean(false)
         val found = linkedSetOf<String>()
         val handler = Handler(Looper.getMainLooper())
-        val multicastLock = runCatching {
-            wifiManager?.createMulticastLock("lessoncue-discovery")?.apply {
-                setReferenceCounted(false)
-                acquire()
-            }
-        }.getOrNull()
         lateinit var discoveryListener: NsdManager.DiscoveryListener
         lateinit var timeout: Runnable
         lateinit var resolutions: ServiceResolutionQueue<NsdServiceInfo>
@@ -45,7 +34,6 @@ internal class LessonCueDiscovery(context: Context) {
             handler.post {
                 handler.removeCallbacks(timeout)
                 runCatching { nsdManager.stopServiceDiscovery(discoveryListener) }
-                runCatching { multicastLock?.takeIf { it.isHeld }?.release() }
             }
         }
 

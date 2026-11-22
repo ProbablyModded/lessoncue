@@ -111,6 +111,42 @@ public sealed class YouTubeRuntimeUpdateService(
     public async Task<YouTubeRuntimeOperationResult> QueueUpdateAsync(CancellationToken ct = default) =>
         await QueueAsync("update", ct);
 
+    public async Task<YouTubeRuntimeOperationResult> QueueUpdateAndWaitAsync(
+        TimeSpan timeout, CancellationToken ct = default)
+    {
+        var before = Status;
+        var queued = await QueueUpdateAsync(ct);
+        if (!queued.Success || !queued.Queued) return queued;
+
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), ct);
+            var status = Status;
+            if (status.LastCheckedAt is not { } completedAt ||
+                before.LastCheckedAt is { } previousAt && completedAt <= previousAt)
+                continue;
+
+            var success = status.Error is null;
+            return new YouTubeRuntimeOperationResult(
+                success,
+                true,
+                success
+                    ? status.LastUpdateMessage ?? "The yt-dlp update check completed."
+                    : status.Error!,
+                success ? null : "runtime-update-failed",
+                status);
+        }
+
+        var finalStatus = Status;
+        return new YouTubeRuntimeOperationResult(
+            false,
+            true,
+            "The yt-dlp update did not finish before the automatic retry window expired.",
+            "operation-timeout",
+            finalStatus);
+    }
+
     public void RecordYouTubeFailure(Exception error)
     {
         var current = ReadHealth();

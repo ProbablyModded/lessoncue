@@ -8,6 +8,7 @@ package org.lessoncue.tv
 const val DEMO_SERVER_URL = "http://lsnq.demo"
 const val DEMO_PASSWORD = "123456"
 const val DEMO_PLAYLIST_ID = "lessoncue-review-demo"
+const val LESSONCUE_PRIVACY_POLICY_URL = "https://probablymodded.github.io/lessoncue/privacy.html"
 
 /**
  * A demo identity is only used by the shared TV screens to render the same

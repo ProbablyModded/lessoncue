@@ -26,6 +26,15 @@ function selectedUploadFiles(files: FileList | null): UploadFileState[] {
   }));
 }
 
+function isYouTubeStreamingFallback(media: Media) {
+  return media.sourceKind === "youtube-download" &&
+    media.processingStatus === "ready" &&
+    !media.relativePath &&
+    !media.offlineEligible &&
+    media.compatibilityStatus === "not-needed" &&
+    isYouTubeUrl(media.sourceUrl);
+}
+
 export function MediaView({
   media,
   lessons,
@@ -1302,11 +1311,13 @@ export function MediaView({
           <span>Status</span>
         </div>
         {filteredMedia.length ? (
-          filteredMedia.map((m) => (
-            <div
-              className={`media-table ${selectedIds.has(m.id) ? "selected" : ""}`}
-              key={m.id}
-            >
+          filteredMedia.map((m) => {
+            const youtubeStreamingFallback = isYouTubeStreamingFallback(m);
+            return (
+              <div
+                className={`media-table ${selectedIds.has(m.id) ? "selected" : ""}`}
+                key={m.id}
+              >
               <label className="media-select">
                 <input
                   type="checkbox"
@@ -1374,7 +1385,9 @@ export function MediaView({
               <span className={`availability media-readiness ${m.offlineEligible ? "" : "internet"}`}>
                 <span>
                   <i className="available-dot" />{" "}
-                  {m.processingStatus === "pending" || m.processingStatus === "processing"
+                  {youtubeStreamingFallback
+                    ? "Online only · streaming fallback active"
+                    : m.processingStatus === "pending" || m.processingStatus === "processing"
                     ? "Preparing upload · playable when ready"
                     : m.processingStatus === "failed" ? "Processing failed"
                     : isConvertibleDocument(m)
@@ -1388,9 +1401,14 @@ export function MediaView({
                             : m.compatibilityStatus === "failed" ? "Playable now · original only"
                               : m.offlineEligible ? "TV ready" : "Internet required"}
                 </span>
-                {(m.processingError || m.compatibilityError || m.conversionError) && (
+                {!youtubeStreamingFallback && (m.processingError || m.compatibilityError || m.conversionError) && (
                   <small className="media-remediation">
                     {m.processingError || m.compatibilityError || m.conversionError}
+                  </small>
+                )}
+                {youtubeStreamingFallback && (
+                  <small className="media-remediation">
+                    Offline recovery will update the YouTube downloader and retry automatically.
                   </small>
                 )}
                 {m.processingStatus === "ready" && isConvertibleDocument(m) && !["pending", "converting", "ready"].includes(m.conversionStatus) && canUpload && (
@@ -1399,8 +1417,9 @@ export function MediaView({
                   </button>
                 )}
               </span>
-            </div>
-          ))
+              </div>
+            );
+          })
         ) : (
           <Empty
             title={
@@ -1459,6 +1478,7 @@ export function MediaManagerModal({
   const converting =
     media.conversionStatus === "pending" ||
     media.conversionStatus === "converting";
+  const youtubeStreamingFallback = isYouTubeStreamingFallback(media);
   return (
     <Modal title={`Manage: ${media.fileName}`} onClose={onClose}>
       <div className="media-manager">
@@ -1490,7 +1510,7 @@ export function MediaManagerModal({
             <strong>{impact?.signage.length ?? "…"}</strong>
           </div>
         </div>
-        {mediaCategory(media) === "video" && media.sourceKind !== "link" && (
+        {mediaCategory(media) === "video" && media.sourceKind !== "link" && !youtubeStreamingFallback && (
           <>
             <section
               className={`compatibility-card ${media.compatibilityStatus}`}
@@ -1603,6 +1623,11 @@ export function MediaManagerModal({
             </button>
           )}
         </div>
+        {youtubeStreamingFallback && (
+          <p className="media-remediation">
+            This video is currently online-only. LessonCue keeps the streaming fallback available and will update the YouTube downloader before retrying the offline copy automatically.
+          </p>
+        )}
         {isConvertibleDocument(media) && (
           <section className={`conversion-card ${media.conversionStatus}`}>
             <div>

@@ -4,6 +4,28 @@ This is the release history for LessonCue. Each release publishes both user and
 developer notes on GitHub; the app shows only the user changes before an
 administrator installs an update.
 
+## v0.46.47 — Store policy and TV capability cleanup
+
+### User changes
+
+- TV connection screens now show the current privacy-policy address directly
+  in the app.
+- The store TV package no longer advertises unnecessary Wi-Fi capabilities or
+  a landscape-only device restriction.
+- YouTube downloads now retry after the downloader runtime is refreshed, while
+  keeping the original stream available when an offline copy is not ready.
+
+### Developer changes
+
+- Removed the Wi-Fi multicast lock and related permissions while retaining
+  Android NSD server discovery.
+- Added bounded automatic recovery for failed YouTube downloads, including
+  database tracking and clearer online-only media status in the administrator.
+- Corrected the GitHub Pages policy build so `_site` can be generated and
+  deployed safely, and refreshed the policy's developer/contact information.
+- Release server/web version 0.46.47 and Android TV/Fire TV version 0.46.19
+  (version code 159).
+
 ## v0.46.46 — Reliable TV downloads and review navigation
 
 ### User changes

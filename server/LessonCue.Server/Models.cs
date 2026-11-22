@@ -333,6 +333,9 @@ public sealed class MediaAsset
     [MaxLength(32)] public string SourceKind { get; set; } = "upload";
     [MaxLength(2048)] public string? SourceUrl { get; set; }
     [MaxLength(32)] public string? LinkKind { get; set; }
+    [MaxLength(32)] public string? YouTubeRecoveryVersion { get; set; }
+    public int YouTubeRecoveryAttempts { get; set; }
+    public DateTimeOffset? YouTubeRecoveryLastAttemptAt { get; set; }
     [MaxLength(32)] public string StoragePolicy { get; set; } = "persistent";
     public Guid? OriginLessonId { get; set; }
     public DateTimeOffset? DeleteAfter { get; set; }

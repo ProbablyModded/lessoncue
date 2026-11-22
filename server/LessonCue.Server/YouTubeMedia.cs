@@ -44,6 +44,11 @@ public sealed class YouTubeImportService(
     YouTubeRuntimeUpdateService runtimeUpdates,
     ILogger<YouTubeImportService> logger) : BackgroundService
 {
+    private const int MaximumAutomaticRecoveryAttempts = 3;
+    private static readonly TimeSpan AutomaticRecoveryRetryDelay = TimeSpan.FromHours(6);
+    private static readonly TimeSpan AutomaticRecoveryScanInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan RuntimeUpdateWaitTimeout = TimeSpan.FromMinutes(3);
+
     private sealed record DownloadProfile(string Name, string Format, string? ExtractorArguments,
         string? MergeOutputFormat, string FormatSort, bool UseJavaScriptRuntime = true);
 
@@ -64,15 +69,15 @@ public sealed class YouTubeImportService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var recoveryPending = true;
+        var nextRecoveryScanAt = DateTimeOffset.UtcNow;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                if (recoveryPending)
+                if (DateTimeOffset.UtcNow >= nextRecoveryScanAt)
                 {
                     await RecoverStreamingFallbacksAsync(stoppingToken);
-                    recoveryPending = false;
+                    nextRecoveryScanAt = DateTimeOffset.UtcNow.Add(AutomaticRecoveryScanInterval);
                 }
                 using var scope = scopes.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<LessonCueDb>();
@@ -107,43 +112,40 @@ public sealed class YouTubeImportService(
 
             Directory.CreateDirectory(temporary);
             var outputTemplate = Path.Combine(temporary, "%(title).150B [%(id)s].%(ext)s");
-            string? downloaded = null;
-            string? selectedProfile = null;
-            for (var profileIndex = 0; profileIndex < DownloadProfiles.Length; profileIndex++)
+            (string Path, string Profile) downloadedResult;
+            var downloadWasAttempted = false;
+            try
             {
-                var profile = DownloadProfiles[profileIndex];
-                if (profileIndex > 0) ResetStagingDirectory(temporary);
+                downloadWasAttempted = true;
+                downloadedResult = await DownloadWithProfilesAsync(
+                    executable, temporary, outputTemplate, snapshot.RemainingBytes,
+                    item.SourceUrl!, denoExecutable, item.Id, ct);
+            }
+            catch (Exception firstError) when (downloadWasAttempted && firstError is not OperationCanceledException)
+            {
+                logger.LogWarning(firstError,
+                    "YouTube media download failed for {MediaId}; updating yt-dlp before one automatic retry",
+                    item.Id);
+                var update = await runtimeUpdates.QueueUpdateAndWaitAsync(RuntimeUpdateWaitTimeout, ct);
+                if (!update.Success)
+                    logger.LogWarning("Automatic yt-dlp update did not complete before retrying YouTube media {MediaId}: {Message}",
+                        item.Id, update.Message);
                 try
                 {
-                    var stdout = await ConstrainedProcessRunner.RunAsync(executable,
-                        BuildDownloadArguments(outputTemplate, snapshot.RemainingBytes, item.SourceUrl!, denoExecutable, profile),
-                        ConstrainedProcessOptions.Download(temporary, snapshot.RemainingBytes), ct);
-                    downloaded = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                        .Select(Path.GetFullPath).LastOrDefault(File.Exists);
-                    // The path comes back on the downloader's stdout, so it is
-                    // only trusted once it is shown to be inside the working
-                    // directory the downloader was confined to.
-                    if (!ContainedPath.IsInside(temporary, downloaded))
-                        throw new InvalidOperationException("The downloader did not produce a valid local file.");
-                    selectedProfile = profile.Name;
-                    logger.LogInformation("YouTube media download succeeded for {MediaId} using profile {Profile}", item.Id, profile.Name);
-                    break;
+                    downloadedResult = await DownloadWithProfilesAsync(
+                        executable, temporary, outputTemplate, snapshot.RemainingBytes,
+                        item.SourceUrl!, denoExecutable, item.Id, ct);
                 }
-                catch (Exception ex) when (profileIndex + 1 < DownloadProfiles.Length && ShouldTryAlternateProfile(ex))
-                {
-                    logger.LogWarning(ex,
-                        "YouTube media download profile {Profile} failed for {MediaId}; trying the bounded fallback profile",
-                        profile.Name, item.Id);
-                }
-                catch (Exception ex)
+                catch (Exception retryError) when (retryError is not OperationCanceledException)
                 {
                     throw new InvalidOperationException(
-                        $"YouTube download failed with profile '{profile.Name}': {ex.Message}", ex);
+                        $"YouTube download failed after the automatic yt-dlp update attempt: {retryError.Message}",
+                        new AggregateException(firstError, retryError));
                 }
             }
 
-            if (downloaded is null)
-                throw new InvalidOperationException("The downloader did not produce a valid local file after all supported profiles.");
+            var downloaded = downloadedResult.Path;
+            var selectedProfile = downloadedResult.Profile;
             var info = new FileInfo(downloaded);
             if (info.Length > snapshot.RemainingBytes)
                 throw new InvalidOperationException("The downloaded video exceeds the available LessonCue storage.");
@@ -167,11 +169,15 @@ public sealed class YouTubeImportService(
             item.LinkKind = "youtube-local";
             item.ProcessingStatus = "pending";
             item.ProcessingError = null;
+            item.YouTubeRecoveryVersion = null;
+            item.YouTubeRecoveryAttempts = 0;
+            item.YouTubeRecoveryLastAttemptAt = null;
             db.AuditEvents.Add(new AuditEvent { Actor = "system", Action = "media.youtube.download",
                 Object = item.Id.ToString(), Summary = $"Downloaded {item.FileName} to local storage using profile {selectedProfile}." });
             await db.SaveChangesAsync(ct);
             runtimeUpdates.RecordYouTubeSuccess();
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             var streamingFallback = string.IsNullOrWhiteSpace(item.RelativePath) &&
@@ -184,6 +190,8 @@ public sealed class YouTubeImportService(
                 item.CompatibilityError = null;
                 item.OfflineEligible = false;
                 item.LinkKind = "youtube";
+                item.YouTubeRecoveryVersion ??= CurrentRecoveryVersion();
+                item.YouTubeRecoveryLastAttemptAt ??= DateTimeOffset.UtcNow;
                 db.AuditEvents.Add(new AuditEvent
                 {
                     Actor = "system", Action = "media.youtube.streaming-fallback", Object = item.Id.ToString(),
@@ -205,6 +213,50 @@ public sealed class YouTubeImportService(
         {
             try { if (Directory.Exists(temporary)) Directory.Delete(temporary, true); } catch (Exception ex) { logger.LogDebug(ex, "Could not remove YouTube staging directory"); }
         }
+    }
+
+    private async Task<(string Path, string Profile)> DownloadWithProfilesAsync(
+        string executable, string temporary, string outputTemplate, long availableBytes,
+        string sourceUrl, string? denoExecutable, Guid mediaId, CancellationToken ct)
+    {
+        string? downloaded = null;
+        string? selectedProfile = null;
+        for (var profileIndex = 0; profileIndex < DownloadProfiles.Length; profileIndex++)
+        {
+            var profile = DownloadProfiles[profileIndex];
+            if (profileIndex > 0) ResetStagingDirectory(temporary);
+            try
+            {
+                var stdout = await ConstrainedProcessRunner.RunAsync(executable,
+                    BuildDownloadArguments(outputTemplate, availableBytes, sourceUrl, denoExecutable, profile),
+                    ConstrainedProcessOptions.Download(temporary, availableBytes), ct);
+                downloaded = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(Path.GetFullPath).LastOrDefault(File.Exists);
+                // The path comes back on the downloader's stdout, so it is
+                // only trusted once it is shown to be inside the working
+                // directory the downloader was confined to.
+                if (!ContainedPath.IsInside(temporary, downloaded))
+                    throw new InvalidOperationException("The downloader did not produce a valid local file.");
+                selectedProfile = profile.Name;
+                logger.LogInformation("YouTube media download succeeded for {MediaId} using profile {Profile}", mediaId, profile.Name);
+                break;
+            }
+            catch (Exception ex) when (profileIndex + 1 < DownloadProfiles.Length && ShouldTryAlternateProfile(ex))
+            {
+                logger.LogWarning(ex,
+                    "YouTube media download profile {Profile} failed for {MediaId}; trying the bounded fallback profile",
+                    profile.Name, mediaId);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"YouTube download failed with profile '{profile.Name}': {ex.Message}", ex);
+            }
+        }
+
+        return downloaded is not null && selectedProfile is not null
+            ? (downloaded, selectedProfile)
+            : throw new InvalidOperationException("The downloader did not produce a valid local file after all supported profiles.");
     }
 
     internal static IReadOnlyList<string> BuildDownloadArguments(
@@ -282,33 +334,75 @@ public sealed class YouTubeImportService(
             : $"Offline download is unavailable; the original YouTube link remains available for streaming. {detail}";
     }
 
+    internal static bool IsAutomaticRecoveryDue(MediaAsset item, string recoveryVersion, DateTimeOffset now)
+    {
+        if (item.SourceKind != "youtube-download" || item.ProcessingStatus != "ready" ||
+            !string.IsNullOrWhiteSpace(item.RelativePath) || item.OfflineEligible ||
+            !YouTubeMedia.HasStreamingFallback(item.SourceUrl)) return false;
+        if (!string.Equals(item.YouTubeRecoveryVersion, recoveryVersion, StringComparison.Ordinal)) return true;
+        if (item.YouTubeRecoveryAttempts >= MaximumAutomaticRecoveryAttempts) return false;
+        return item.YouTubeRecoveryLastAttemptAt is not { } lastAttempt ||
+            now - lastAttempt >= AutomaticRecoveryRetryDelay;
+    }
+
+    internal static string CurrentRecoveryVersion() => UpdateService.InstalledVersion();
+
     private async Task RecoverStreamingFallbacksAsync(CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LessonCueDb>();
+        var recoveryVersion = CurrentRecoveryVersion();
+        var now = DateTimeOffset.UtcNow;
         var candidates = await db.MediaAssets
-            .Where(x => x.SourceKind == "youtube-download" && x.ProcessingStatus == "failed")
+            .Where(x => x.SourceKind == "youtube-download" &&
+                (x.ProcessingStatus == "failed" || x.ProcessingStatus == "ready") &&
+                string.IsNullOrWhiteSpace(x.RelativePath))
+            .OrderBy(x => x.CreatedAt)
+            .Take(100)
             .ToListAsync(ct);
-        var recoverable = candidates.Where(x => string.IsNullOrWhiteSpace(x.RelativePath) &&
-            YouTubeMedia.HasStreamingFallback(x.SourceUrl)).ToList();
-        foreach (var item in recoverable)
+        var normalized = 0;
+        foreach (var item in candidates)
         {
-            item.ProcessingStatus = "ready";
-            item.ProcessingError = StreamingFallbackMessage(item.ProcessingError);
+            if (!YouTubeMedia.HasStreamingFallback(item.SourceUrl)) continue;
+            if (item.ProcessingStatus == "failed")
+            {
+                item.ProcessingStatus = "ready";
+                item.ProcessingError = StreamingFallbackMessage(item.ProcessingError);
+                normalized++;
+                db.AuditEvents.Add(new AuditEvent
+                {
+                    Actor = "system", Action = "media.youtube.streaming-fallback.recovered", Object = item.Id.ToString(),
+                    Result = "fallback", Summary = $"Recovered {item.FileName} as a streaming-backed YouTube item."
+                });
+            }
             item.CompatibilityStatus = "not-needed";
             item.CompatibilityError = null;
             item.OfflineEligible = false;
             item.LinkKind = "youtube";
+            if (!IsAutomaticRecoveryDue(item, recoveryVersion, now)) continue;
+
+            item.YouTubeRecoveryVersion = recoveryVersion;
+            item.YouTubeRecoveryAttempts = Math.Max(0, item.YouTubeRecoveryAttempts) + 1;
+            item.YouTubeRecoveryLastAttemptAt = now;
+            item.ProcessingStatus = "downloading";
+            item.ProcessingError = null;
+            item.CompatibilityStatus = "not-needed";
+            item.CompatibilityError = null;
+            item.OfflineEligible = false;
             db.AuditEvents.Add(new AuditEvent
             {
-                Actor = "system", Action = "media.youtube.streaming-fallback.recovered", Object = item.Id.ToString(),
-                Result = "fallback", Summary = $"Recovered {item.FileName} as a streaming-backed YouTube item."
+                Actor = "system", Action = "media.youtube.auto-recovery.queued", Object = item.Id.ToString(),
+                Result = "queued", Summary = $"Queued automatic offline recovery attempt {item.YouTubeRecoveryAttempts} for {item.FileName}."
             });
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Queued automatic YouTube offline recovery for {MediaId}; attempt {Attempt}",
+                item.Id, item.YouTubeRecoveryAttempts);
+            return;
         }
-        if (recoverable.Count > 0)
+        if (normalized > 0)
         {
             await db.SaveChangesAsync(ct);
-            logger.LogWarning("Recovered {Count} failed YouTube item(s) as streaming fallbacks", recoverable.Count);
+            logger.LogWarning("Recovered {Count} failed YouTube item(s) as streaming fallbacks", normalized);
         }
     }
 
@@ -321,7 +415,7 @@ public sealed class YouTubeImportService(
 
     private static void ResetStagingDirectory(string path)
     {
-        Directory.Delete(path, recursive: true);
+        if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
         Directory.CreateDirectory(path);
     }
 

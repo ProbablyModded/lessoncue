@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <nav><a class="brand" href="./"><img src="assets/lessoncue-icon.svg" alt=""> LessonCue</a><div><a href="./">Overview</a><a href="install.html">Install</a><a href="roadmap.html">Roadmap</a><a href="privacy.html">Privacy</a><a class="repo" href="https://github.com/nickhighland/lessoncue">GitHub ↗</a></div></nav>
+  <nav><a class="brand" href="./"><img src="assets/lessoncue-icon.svg" alt=""> LessonCue</a><div><a href="./">Overview</a><a href="install.html">Install</a><a href="roadmap.html">Roadmap</a><a href="privacy.html">Privacy</a><a class="repo" href="https://github.com/ProbablyModded/lessoncue">GitHub ↗</a></div></nav>
   <main class="page">
     <p class="eyebrow">IMPLEMENTATION</p>
     <h1>One local server. One published protocol.</h1>
@@ -22,7 +22,7 @@
       <article><b>LOCAL COMMAND CHANNEL</b><h2>Phone browser → server → paired TV</h2><p>Authenticated phone controls are versioned and queued in SQLite. TV clients establish a startup cursor, poll with their device credential, and consume play, pause, resume, previous, next, stop, and seek commands in order.</p></article>
       <article><b>SCHEDULE SEMANTICS</b><h2>Pre-roll → countdown → lesson</h2><p>At <code>designatedStartAt - durationMs</code>, the client leaves the repeating pre-roll and starts the countdown. If it wakes midway, it seeks by elapsed time so the countdown still finishes exactly at the designated start.</p></article>
     </section>
-    <p><a class="primary" href="https://github.com/nickhighland/lessoncue/blob/main/docs/implementation.md">Full developer guide ↗</a></p>
+    <p><a class="primary" href="https://github.com/ProbablyModded/lessoncue/blob/main/docs/implementation.md">Full developer guide ↗</a></p>
   </main>
 </body>
 </html>

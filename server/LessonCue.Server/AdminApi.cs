@@ -2020,6 +2020,9 @@ public static class AdminApi
                     return Results.Conflict(new { error = "This YouTube download is already in progress." });
                 media.ProcessingStatus = "downloading";
                 media.ProcessingError = null;
+                media.YouTubeRecoveryVersion = YouTubeImportService.CurrentRecoveryVersion();
+                media.YouTubeRecoveryAttempts = 0;
+                media.YouTubeRecoveryLastAttemptAt = null;
                 db.AuditEvents.Add(new AuditEvent
                 {
                     Actor = context.User.Identity?.Name ?? "admin",
