@@ -37,6 +37,15 @@ internal fun prepareCacheForDownload(directory: File, item: CueItem): File? {
     )
     candidates.filter { it.exists() && !isCacheFileUsable(it, item.sizeBytes) }
         .forEach { runCatching { it.delete() } }
+    val expectedSize = item.sizeBytes?.takeIf { it > 0L }
+    val partial = directory.resolve("${item.cacheFileName()}.part")
+    if (expectedSize != null && partial.isFile && partial.length() > expectedSize) {
+        // This is a partial from an older, larger rendition. It cannot be
+        // resumed against the current manifest and otherwise makes the cache
+        // look like it is downloading more bytes than the item needs.
+        runCatching { partial.delete() }
+        runCatching { directory.resolve("${partial.name}.etag").delete() }
+    }
     val usable = candidates.firstOrNull { isCacheFileUsable(it, item.sizeBytes) }
     // A new WorkManager attempt will write a fresh diagnostic if it fails.
     // Do not carry an old retry marker into that attempt.

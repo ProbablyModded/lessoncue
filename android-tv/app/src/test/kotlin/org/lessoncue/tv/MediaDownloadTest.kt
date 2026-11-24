@@ -132,6 +132,15 @@ class MediaDownloadTest {
         assertEquals("fresh", destination.readText())
     }
 
+    @Test fun oversizedPartialRestartsWithoutRequestingAnInvalidRange() = withDestination { destination, partial ->
+        partial.writeText("stale-content")
+
+        downloadMedia(Connection("fresh", length = 5), destination, null, expectedBytes = 5)
+
+        assertEquals("fresh", destination.readText())
+        assertNull(destination.resolveSibling("${partial.name}.etag").takeIf { it.exists() })
+    }
+
     @Test fun checksumMismatchNeverPublishesAndMatchingChecksumSucceeds() = withDestination { destination, partial ->
         val expected = MessageDigest.getInstance("SHA-256").digest("abc".toByteArray())
             .joinToString("") { "%02x".format(it) }

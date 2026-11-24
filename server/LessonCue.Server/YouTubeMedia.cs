@@ -347,19 +347,24 @@ public sealed class YouTubeImportService(
 
     internal static string CurrentRecoveryVersion() => UpdateService.InstalledVersion();
 
+    // SQLite cannot translate DateTimeOffset ordering for this entity. Keep
+    // the database query as a filter-only query, then choose the oldest
+    // recovery candidates in memory.
+    internal static IReadOnlyList<MediaAsset> OrderRecoveryCandidates(
+        IEnumerable<MediaAsset> candidates, int limit = 100) =>
+        candidates.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).Take(limit).ToArray();
+
     private async Task RecoverStreamingFallbacksAsync(CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LessonCueDb>();
         var recoveryVersion = CurrentRecoveryVersion();
         var now = DateTimeOffset.UtcNow;
-        var candidates = await db.MediaAssets
+        var candidates = OrderRecoveryCandidates(await db.MediaAssets
             .Where(x => x.SourceKind == "youtube-download" &&
                 (x.ProcessingStatus == "failed" || x.ProcessingStatus == "ready") &&
                 string.IsNullOrWhiteSpace(x.RelativePath))
-            .OrderBy(x => x.CreatedAt)
-            .Take(100)
-            .ToListAsync(ct);
+            .ToListAsync(ct));
         var normalized = 0;
         foreach (var item in candidates)
         {

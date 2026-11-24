@@ -145,4 +145,21 @@ public sealed class YouTubeMediaTests
         Assert.False(YouTubeImportService.ShouldTryAlternateProfile(
             new InvalidOperationException("The URL is not a supported YouTube source.")));
     }
+
+    [Fact]
+    public void OrdersRecoveryCandidatesAfterDatabaseMaterialization()
+    {
+        var oldest = new MediaAsset
+        {
+            FileName = "oldest.mp4", RelativePath = "", CreatedAt = new DateTimeOffset(2026, 11, 20, 0, 0, 0, TimeSpan.Zero)
+        };
+        var newest = new MediaAsset
+        {
+            FileName = "newest.mp4", RelativePath = "", CreatedAt = new DateTimeOffset(2026, 11, 21, 0, 0, 0, TimeSpan.Zero)
+        };
+
+        var ordered = YouTubeImportService.OrderRecoveryCandidates([newest, oldest]);
+
+        Assert.Equal([oldest.Id, newest.Id], ordered.Select(item => item.Id));
+    }
 }

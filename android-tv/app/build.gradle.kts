@@ -22,8 +22,8 @@ android {
         // Keep every store submission above the last published version code.
         // Each Fire TV submission needs a monotonically increasing identity;
         // keep this code above every APK previously uploaded to Amazon.
-        versionCode = 160
-        versionName = "0.46.20"
+        versionCode = 161
+        versionName = "0.46.21"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "UPDATE_ENABLED", "false")
         buildConfigField(

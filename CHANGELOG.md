@@ -4,6 +4,26 @@ This is the release history for LessonCue. Each release publishes both user and
 developer notes on GitHub; the app shows only the user changes before an
 administrator installs an update.
 
+## v0.46.49 — TV download recovery and YouTube importer stability
+
+### User changes
+
+- TV downloads now discard stale partial files when a lesson rendition changes,
+  so a smaller current lesson can resume cleanly instead of reporting an
+  invalid range or manifest mismatch.
+- YouTube offline recovery no longer gets stuck in a repeating SQLite query
+  failure.
+
+### Developer changes
+
+- Materialized YouTube recovery candidates before ordering their
+  `DateTimeOffset` timestamps, with regression coverage for SQLite.
+- Added TV regression coverage for oversized partial-cache cleanup and fresh
+  download fallback.
+
+- Release server/web version 0.46.49 and Android TV/Fire TV version 0.46.21
+  (version code 161).
+
 ## v0.46.48 — Storage-aware TV lesson caching
 
 ### User changes

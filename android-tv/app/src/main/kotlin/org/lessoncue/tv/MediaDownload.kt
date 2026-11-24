@@ -33,7 +33,15 @@ internal fun downloadMedia(
         connection.connectTimeout = 15_000
         connection.readTimeout = 60_000
         connection.setRequestProperty("Accept-Encoding", "identity")
-        val existing = if (partial.exists()) partial.length() else 0L
+        val expectedTotal = expectedBytes?.takeIf { it > 0L }
+        var existing = if (partial.exists()) partial.length() else 0L
+        if (expectedTotal != null && existing > expectedTotal) {
+            // A manifest can replace a rendition with a smaller file while an
+            // older download is still on disk. Never ask the server for a
+            // range beyond the new object; restart that stale partial cleanly.
+            discardPartial(partial, partialTag)
+            existing = 0L
+        }
         val resumeTag = if (existing > 0L && partialTag.isFile)
             partialTag.readText().trim().takeIf { it.isNotEmpty() }
         else null
@@ -95,7 +103,6 @@ internal fun downloadMedia(
         }
         if (range != null && partial.length() != range.second)
             throw IOException("Media download requires another range to complete")
-        val expectedTotal = expectedBytes?.takeIf { it > 0L }
         if (expectedTotal != null && partial.length() != expectedTotal) {
             if (partial.length() > expectedTotal) partial.delete()
             throw IOException("Media download did not match the manifest byte count")

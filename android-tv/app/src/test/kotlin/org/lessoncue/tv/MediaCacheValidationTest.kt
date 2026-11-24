@@ -56,6 +56,23 @@ class MediaCacheValidationTest {
         }
     }
 
+    @Test
+    fun oversizedPartialFromAnOlderManifestIsRemovedBeforeRetry() {
+        val directory = Files.createTempDirectory("lessoncue-cache-validation").toFile()
+        try {
+            val item = item(sizeBytes = 5)
+            val partial = directory.resolve("${item.cacheFileName()}.part").also { it.writeBytes(ByteArray(8)) }
+            val etag = directory.resolve("${partial.name}.etag").also { it.writeText("\"old\"") }
+
+            prepareCacheForDownload(directory, item)
+
+            assertFalse(partial.exists())
+            assertFalse(etag.exists())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     private fun item(sizeBytes: Long, sha256: String? = null) = CueItem(
         id = "item-1",
         title = "Test video",
